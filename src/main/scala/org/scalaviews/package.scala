@@ -27,8 +27,9 @@ package object scalaviews {
   trait ViewFactory extends Compile {
   }
 
-  private[scalaviews] trait ScalaViewCodegen extends ScalaOpsPkgExp
+  private[scalaviews] trait ScalaViewExp extends ScalaOpsPkgExp
       with CompileScala { self =>
-    val codegen = new ScalaCodeGenPkg { val IR: self.type = self }
+    type Codegen = ScalaCodeGenPkg
+    val codegen = new Codegen { val IR: self.type = self }
   }
 }

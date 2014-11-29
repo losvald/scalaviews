@@ -35,8 +35,10 @@ trait FixedArrayView extends (Int => Int) { //with BaseExp {
   val size: Int
 }
 
+private[scalaviews]
 trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     with LiftNumeric
+    with StaticData
     // with LiftString  with LiftBoolean
     // with IfThenElse with Equal
     // with NumericOps with PrimitiveOps with BooleanOps
@@ -54,18 +56,34 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   // }
 
   def apply(len1: Int, len2: Int) = {
-    // (a1: Array[Int], a2: Array[Int]) => // this compiles for each a1/2
-    require(len1 >= 0 & len2 >= 0)
-    val v = new FixedArrayView {
-      lazy val size = sizeC()
-      lazy val sizeC = compile(sizeBody)
-      protected def sizeBody(u: Rep[Unit]) = len1 + len2
+    (arr1: Array[Int], arr2: Array[Int]) => { // this compiles for each a1/2
+      require(len1 >= 0 & len2 >= 0)
+      new FixedArrayView {
+        override lazy val size = sizeC()
+        lazy val sizeC = compile(sizeBody)
+        protected def sizeBody(u: Rep[Unit]) = len1 + len2
 
-      override def apply(i: Int): Int = applyC(i)
-      lazy val applyC = compile(applyBody)
-      protected def applyBody(i: Rep[Int]) = // TODO: real implementation
-        if (i < len1) i else i - (len1 + len2)
-    } // using a closure, this compiles once only (per apply() call)
-    (a1: Array[Int], a2: Array[Int]) => v
+        override def apply(i: Int): Int = applyC(i)
+        lazy val applyC = compile(applyBody)
+        protected def applyBody(i: Rep[Int]) =
+          if (i < len1) a1(i) else a2(i - len1)
+
+        private val a1 = staticData(arr1)
+        private val a2 = staticData(arr2)
+      }
+    }
+  }
+}
+
+object FixedArrayView {
+  private[scalaviews] trait Driver extends ScalaViewExp
+      with StaticDataExp { self =>
+    override val codegen = new Codegen
+        with ScalaGenStaticData {
+      val IR: self.type = self
+    }
+  }
+
+  object Factory extends FixedArrayViewFactory with Driver {
   }
 }

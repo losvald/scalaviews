@@ -25,24 +25,18 @@ import scala.virtualization.lms.common._
 
 import org.scalatest.FunSuite
 
-// trait FixedArrayViewFactory2 extends AnyRef
-//     with FixedArrayViewFactory
-//     with ScalaViewCodegen
-//     with CompileMock
-//     // with ScalaOpsPkgExp
-// {
-// }
-
-class FixedArrayViewTest extends FunSuite {
+trait FixedArrayViewTestBase extends FunSuite {
+  type Factory = FixedArrayViewFactory
 
   val a1Len5 = Array.range(0, 50, 10)
   val a2Len3 = Array.range(500, 800, 100)
   val a1Len9 = Array.range(0, 90, 10)
   val a1Len2 = Array(0, 10)
   val a2Len1 = Array(500)
+}
 
-  object Factory extends FixedArrayViewFactory with ScalaViewCodegen {
-  }
+class FixedArrayViewTest extends FixedArrayViewTestBase {
+  import FixedArrayView._
 
   val len5And3F = Factory(5, 3)
   val len0And3F = Factory(0, 3)
@@ -54,11 +48,28 @@ class FixedArrayViewTest extends FunSuite {
     assert(len0And3F(a1Len5, a1Len5).size === 3)
   }
 
-  object FactoryMock extends FixedArrayViewFactory
-      with ScalaViewCodegen with CompileMock {
+  test("apply - 2 chunks (non-empty)") {
+    val len5And3 = len5And3F(a1Len5, a2Len3)
+    assert(len5And3(0) === 0)
+    assert(len5And3(1) === 10)
+    assert(len5And3(4) === 40)
+    assert(len5And3(5) === 500)
+    assert(len5And3(7) === 700)
   }
 
-  // begin test cases that inspect generated code
+  test("apply - 2 chunks (first empty)") {
+    val len0And3 = len0And3F(Array.empty, a2Len3)
+    assert(len0And3(0) === 500)
+    assert(len0And3(1) === 600)
+    assert(len0And3(2) === 700)
+  }
+}
+
+class FixedArrayViewScalaCodegenTest extends FixedArrayViewTestBase {
+  import FixedArrayView._
+
+  object FactoryMock extends Factory with Driver with CompileMock {
+  }
 
   import CompileMock._
   import scala.language.reflectiveCalls
@@ -66,6 +77,9 @@ class FixedArrayViewTest extends FunSuite {
 
   val len19And23FM = FactoryMock(19, 23)
   val len19And23M = len19And23FM(a1Len5, a2Len3)
+
+  val len0And3FM = FactoryMock(0, 3)
+  val len0And3M = len0And3FM(Array.empty, a2Len3)
 
   test("sizeC - 2 chunks") {
     val method = len19And23M.sizeC
@@ -78,6 +92,13 @@ class FixedArrayViewTest extends FunSuite {
     val method = len19And23M.applyC
     assert(method.paramType.tpe =:= typeTag[Int].tpe)
     assert(method.resultType.tpe =:= typeTag[Int].tpe)
-    assert(method.body.contains("- 42"))
+    assert(method.body.contains("< 19"))
+    assert(method.body.contains("- 19"))
+  }
+
+  ignore("applyC - 2 chunks (first empty)") {
+    // FIXME: comparing if index < 0 is pointless and should be optimized away
+    val method = len0And3M.applyC
+    assert(!method.body.contains("<"))
   }
 }
