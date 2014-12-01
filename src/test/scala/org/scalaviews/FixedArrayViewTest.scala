@@ -94,11 +94,15 @@ class FixedArrayViewScalaCodegenTest extends FixedArrayViewTestBase {
     assert(method.resultType.tpe =:= typeTag[Int].tpe)
     assert(method.body.contains("< 19"))
     assert(method.body.contains("- 19"))
+    assert(!method.body.contains("&&"))
   }
 
-  ignore("applyC - 2 chunks (first empty)") {
-    // FIXME: comparing if index < 0 is pointless and should be optimized away
+  test("applyC - 2 chunks (first empty)") {
+    // verify the branching and boolean and is optimized away, since
     val method = len0And3M.applyC
+    assert(!method.body.contains("- 0"))
+    assert(!method.body.contains("&&"))
     assert(!method.body.contains("<"))
+    assert(!method.body.contains("if"))
   }
 }

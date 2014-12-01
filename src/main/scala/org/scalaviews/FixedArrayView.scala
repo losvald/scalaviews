@@ -37,9 +37,11 @@ trait FixedArrayView extends (Int => Int) { //with BaseExp {
 
 private[scalaviews]
 trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
-    with LiftNumeric
+    with LiftNumeric with LiftBoolean
     with StaticData
-    // with LiftString  with LiftBoolean
+    with IfThenElseExpOpt
+    with EqualExpBridge // required by IfThenElseExp
+    with Ops.BooleanAnd
     // with IfThenElse with Equal
     // with NumericOps with PrimitiveOps with BooleanOps
     // with RangeOps with OrderingOps with MiscOps with ArrayOps with StringOps
@@ -66,7 +68,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         override def apply(i: Int): Int = applyC(i)
         lazy val applyC = compile(applyBody)
         protected def applyBody(i: Rep[Int]) =
-          if (i < len1) a1(i) else a2(i - len1)
+          if (len1 > 0 && i < len1) a1(i)
+          else a2(i - len1)
 
         private val a1 = staticData(arr1)
         private val a2 = staticData(arr2)
