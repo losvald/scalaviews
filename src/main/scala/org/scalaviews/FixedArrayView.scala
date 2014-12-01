@@ -31,7 +31,7 @@ import scala.virtualization.lms.common._
 //   // def data(): Rep[Array[T]]
 // }
 
-trait FixedArrayView extends (Int => Int) { //with BaseExp {
+trait FixedArrayView[@specialized(Int, Double) T] extends (Int => T) {
   val size: Int
 }
 
@@ -39,9 +39,7 @@ private[scalaviews]
 trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     with LiftNumeric with LiftBoolean
     with StaticData
-    with IfThenElseExpOpt
-    with EqualExpBridge // required by IfThenElseExp
-    with Ops.BooleanAnd
+    with IfThenElse
     // with IfThenElse with Equal
     // with NumericOps with PrimitiveOps with BooleanOps
     // with RangeOps with OrderingOps with MiscOps with ArrayOps with StringOps
@@ -57,19 +55,20 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   //   }
   // }
 
-  def apply(len1: Int, len2: Int) = {
-    (arr1: Array[Int], arr2: Array[Int]) => { // this compiles for each a1/2
+  def apply[T](len1: Int, len2: Int)(implicit m: Manifest[T]) = {
+    (arr1: Array[T], arr2: Array[T]) => { // this compiles for each a1/2
       require(len1 >= 0 & len2 >= 0)
-      new FixedArrayView {
+      new FixedArrayView[T] {
         override lazy val size = sizeC()
         lazy val sizeC = compile(sizeBody)
         protected def sizeBody(u: Rep[Unit]) = len1 + len2
 
-        override def apply(i: Int): Int = applyC(i)
+        override def apply(i: Int): T = applyC(i)
         lazy val applyC = compile(applyBody)
-        protected def applyBody(i: Rep[Int]) =
+        protected def applyBody(i: Rep[Int]) = {
           if (len1 > 0 && i < len1) a1(i)
           else a2(i - len1)
+        }
 
         private val a1 = staticData(arr1)
         private val a2 = staticData(arr2)
@@ -80,7 +79,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
 object FixedArrayView {
   private[scalaviews] trait Driver extends ScalaViewExp
-      with StaticDataExp { self =>
+      with StaticDataExp with IfThenElseExpOpt
+      with ExpOpt.BooleanAnd { self =>
     override val codegen = new Codegen
         with ScalaGenStaticData {
       val IR: self.type = self

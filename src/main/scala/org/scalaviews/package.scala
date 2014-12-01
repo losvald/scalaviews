@@ -33,7 +33,7 @@ package object scalaviews {
     val codegen = new Codegen { val IR: self.type = self }
   }
 
-  private[scalaviews] object Ops {
+  private[scalaviews] object ExpOpt {
     import scala.reflect.SourceContext
 
     trait BooleanAnd extends BooleanOpsExpOpt {

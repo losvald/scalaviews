@@ -38,23 +38,32 @@ trait FixedArrayViewTestBase extends FunSuite {
 class FixedArrayViewTest extends FixedArrayViewTestBase {
   import FixedArrayView._
 
-  val len5And3F = Factory(5, 3)
-  val len0And3F = Factory(0, 3)
+  val len5And3F = Factory[Int](5, 3)
+  val len0And3F = Factory[Int](0, 3)
 
   test("size - 2 chunks") {
     assert(len5And3F(a1Len5, a2Len3).size === 8)
     assert(len0And3F(Array.empty, a2Len3).size === 3)
-    assert(Factory(0, 0)(Array.empty, Array.empty).size === 0)
+    val len0And0F = Factory[Int](0, 0) // TODO: why I cannot inline this?
+    assert(len0And0F(Array.empty, Array.empty).size === 0)
     assert(len0And3F(a1Len5, a1Len5).size === 3)
   }
 
-  test("apply - 2 chunks (non-empty)") {
+  test("apply - 2 chunks (Int)") {
     val len5And3 = len5And3F(a1Len5, a2Len3)
     assert(len5And3(0) === 0)
     assert(len5And3(1) === 10)
     assert(len5And3(4) === 40)
     assert(len5And3(5) === 500)
     assert(len5And3(7) === 700)
+  }
+
+  test("apply - 2 chunks (Double)") {
+    val piF = Factory[Double](2, 2)
+    val pi = piF(Array(3.0, 0.1), Array(0.04, 0.001))
+    assert(pi(0) === 3)
+    assert(pi(1) === 0.1)
+    assert(pi(2) === 0.04)
   }
 
   test("apply - 2 chunks (first empty)") {
@@ -75,10 +84,10 @@ class FixedArrayViewScalaCodegenTest extends FixedArrayViewTestBase {
   import scala.language.reflectiveCalls
   import scala.reflect.runtime.universe._
 
-  val len19And23FM = FactoryMock(19, 23)
+  val len19And23FM = FactoryMock[Int](19, 23)
   val len19And23M = len19And23FM(a1Len5, a2Len3)
 
-  val len0And3FM = FactoryMock(0, 3)
+  val len0And3FM = FactoryMock[Int](0, 3)
   val len0And3M = len0And3FM(Array.empty, a2Len3)
 
   test("sizeC - 2 chunks") {
