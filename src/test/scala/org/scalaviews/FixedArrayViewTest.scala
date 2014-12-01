@@ -90,13 +90,6 @@ class FixedArrayViewScalaCodegenTest extends FixedArrayViewTestBase {
   val len0And3FM = FactoryMock[Int](0, 3)
   val len0And3M = len0And3FM(Array.empty, a2Len3)
 
-  test("sizeC - 2 chunks") {
-    val method = len19And23M.sizeC
-    assert(method.paramType.tpe =:= typeTag[Unit].tpe)
-    assert(method.resultType.tpe =:= typeTag[Int].tpe)
-    assert(method.body === "42")
-  }
-
   test("applyC - 2 chunks") {
     val method = len19And23M.applyC
     assert(method.paramType.tpe =:= typeTag[Int].tpe)

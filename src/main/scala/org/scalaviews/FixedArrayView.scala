@@ -56,12 +56,11 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   // }
 
   def apply[T](len1: Int, len2: Int)(implicit m: Manifest[T]) = {
+    require(len1 >= 0 & len2 >= 0)
     (arr1: Array[T], arr2: Array[T]) => { // this compiles for each a1/2
-      require(len1 >= 0 & len2 >= 0)
+      require(arr1 != null & arr2 != null)
       new FixedArrayView[T] {
-        override lazy val size = sizeC()
-        lazy val sizeC = compile(sizeBody)
-        protected def sizeBody(u: Rep[Unit]) = len1 + len2
+        override val size = len1 + len2
 
         override def apply(i: Int): T = applyC(i)
         lazy val applyC = compile(applyBody)
@@ -70,8 +69,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
           else a2(i - len1)
         }
 
-        private val a1 = staticData(arr1)
-        private val a2 = staticData(arr2)
+        private lazy val a1 = staticData(arr1)
+        private lazy val a2 = staticData(arr2)
       }
     }
   }
