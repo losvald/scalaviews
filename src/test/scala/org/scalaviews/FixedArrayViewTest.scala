@@ -23,7 +23,7 @@ package org.scalaviews
 
 import scala.virtualization.lms.common._
 
-import org.scalatest.FunSuite
+import org.scalatest.{FunSuite,MustMatchers}
 
 object FixedArrayViewTest {
   type Factory = FixedArrayViewFactory
@@ -35,7 +35,7 @@ object FixedArrayViewTest {
   val a2Len1 = Array(500)
 }
 
-class FixedArrayViewTest extends FunSuite {
+class FixedArrayViewTest extends FunSuite with ClassMatchers {
   import FixedArrayView._
   import FixedArrayViewTest._
 
@@ -75,7 +75,7 @@ class FixedArrayViewTest extends FunSuite {
   }
 }
 
-class FixedArrayViewScalaCodegenTest extends FunSuite
+class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     with ViewFactoryProvider[FixedArrayViewFactory] {
   import FixedArrayViewTest.{a1Len5, a2Len3}
   import FixedArrayView.{Factory => _, _} // mock the factory
@@ -93,19 +93,19 @@ class FixedArrayViewScalaCodegenTest extends FunSuite
 
   test("applyC - 2 chunks") {
     val method = len19And23.applyC
-    assert(method.paramType.tpe =:= typeTag[Int].tpe)
-    assert(method.resultType.tpe =:= typeTag[Int].tpe)
-    assert(method.body.contains("< 19"))
-    assert(method.body.contains("- 19"))
-    assert(!method.body.contains("&&"))
+    method.paramType must be (ofType[Int])
+    method.resultType must be (ofType[Int])
+    method.body must include ("< 19")
+    method.body must include ("- 19")
+    method.body must not include ("&&")
   }
 
   test("applyC - 2 chunks (first empty)") {
     // verify the branching and boolean and is optimized away, since
     val method = len0And3.applyC
-    assert(!method.body.contains("- 0"))
-    assert(!method.body.contains("&&"))
-    assert(!method.body.contains("<"))
-    assert(!method.body.contains("if"))
+    method.body must not include ("- 0")
+    method.body must not include ("&&")
+    method.body must not include ("<")
+    method.body must not include ("if")
   }
 }

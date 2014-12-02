@@ -14,7 +14,7 @@ libraryDependencies += "org.scala-lang.virtualized" % "scala-reflect" % "2.10.2"
 
 libraryDependencies += "EPFL" %% "lms" % "0.3-SNAPSHOT"
 
-libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.0.M5b" % "test"
+libraryDependencies += "org.scalatest" % "scalatest_2.10" % "2.2.1" % "test"
 
 libraryDependencies += "org.scala-lang.virtualized" % "scala-actors" % "2.10.2" % "test"
 
