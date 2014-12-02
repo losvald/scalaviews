@@ -25,6 +25,25 @@ import scala.virtualization.lms.common._
 
 package object scalaviews {
   trait ViewFactory extends Compile {
+    // this allows us to call Expressions's reset after it is mixed in
+    private[scalaviews] def reset
+  }
+
+  // helper for providing reusable thread-safe singleton factories
+  private[scalaviews] trait ViewFactoryProvider[F <: ViewFactory] {
+    def Factory = {
+      val f = factory.get()
+      // HACK: clear compilation state before each call of a factory method,
+      // so we don't need to call reset() at the beginning of each method
+      f.reset // XXX: might create problems when combined with lazy compilation
+      f
+    }
+
+    protected def mkFactory: F
+
+    private val factory = new java.lang.ThreadLocal[F] {
+      override def initialValue = mkFactory
+    }
   }
 
   private[scalaviews] trait ScalaViewExp extends ScalaOpsPkgExp

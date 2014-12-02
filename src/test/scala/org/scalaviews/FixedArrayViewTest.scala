@@ -25,7 +25,7 @@ import scala.virtualization.lms.common._
 
 import org.scalatest.FunSuite
 
-trait FixedArrayViewTestBase extends FunSuite {
+object FixedArrayViewTest {
   type Factory = FixedArrayViewFactory
 
   val a1Len5 = Array.range(0, 50, 10)
@@ -35,8 +35,9 @@ trait FixedArrayViewTestBase extends FunSuite {
   val a2Len1 = Array(500)
 }
 
-class FixedArrayViewTest extends FixedArrayViewTestBase {
+class FixedArrayViewTest extends FunSuite {
   import FixedArrayView._
+  import FixedArrayViewTest._
 
   val len5And3F = Factory[Int](5, 3)
   val len0And3F = Factory[Int](0, 3)
@@ -74,24 +75,24 @@ class FixedArrayViewTest extends FixedArrayViewTestBase {
   }
 }
 
-class FixedArrayViewScalaCodegenTest extends FixedArrayViewTestBase {
-  import FixedArrayView._
-
-  object FactoryMock extends Factory with Driver with CompileMock {
-  }
+class FixedArrayViewScalaCodegenTest extends FunSuite
+    with ViewFactoryProvider[FixedArrayViewFactory] {
+  import FixedArrayViewTest.{a1Len5, a2Len3}
+  import FixedArrayView.{Factory => _, _} // mock the factory
+  def mkFactory = new FixedArrayViewFactory with Driver with CompileMock
 
   import CompileMock._
   import scala.language.reflectiveCalls
   import scala.reflect.runtime.universe._
 
-  val len19And23FM = FactoryMock[Int](19, 23)
-  val len19And23M = len19And23FM(a1Len5, a2Len3)
+  val len19And23F = Factory[Int](19, 23)
+  val len19And23 = len19And23F(a1Len5, a2Len3)
 
-  val len0And3FM = FactoryMock[Int](0, 3)
-  val len0And3M = len0And3FM(Array.empty, a2Len3)
+  val len0And3F = Factory[Int](0, 3)
+  val len0And3 = len0And3F(Array.empty, a2Len3)
 
   test("applyC - 2 chunks") {
-    val method = len19And23M.applyC
+    val method = len19And23.applyC
     assert(method.paramType.tpe =:= typeTag[Int].tpe)
     assert(method.resultType.tpe =:= typeTag[Int].tpe)
     assert(method.body.contains("< 19"))
@@ -101,7 +102,7 @@ class FixedArrayViewScalaCodegenTest extends FixedArrayViewTestBase {
 
   test("applyC - 2 chunks (first empty)") {
     // verify the branching and boolean and is optimized away, since
-    val method = len0And3M.applyC
+    val method = len0And3.applyC
     assert(!method.body.contains("- 0"))
     assert(!method.body.contains("&&"))
     assert(!method.body.contains("<"))

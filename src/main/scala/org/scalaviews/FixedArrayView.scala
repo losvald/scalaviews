@@ -76,7 +76,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   }
 }
 
-object FixedArrayView {
+object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
   private[scalaviews] trait Driver extends ScalaViewExp
       with StaticDataExp with IfThenElseExpOpt
       with ExpOpt.BooleanAnd { self =>
@@ -86,6 +86,5 @@ object FixedArrayView {
     }
   }
 
-  object Factory extends FixedArrayViewFactory with Driver {
-  }
+  override protected def mkFactory = new FixedArrayViewFactory with Driver
 }
