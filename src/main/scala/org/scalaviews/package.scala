@@ -31,17 +31,11 @@ package object scalaviews {
 
   // helper for providing reusable thread-safe singleton factories
   private[scalaviews] trait ViewFactoryProvider[F <: ViewFactory] {
-    def Factory = {
-      val f = factory.get()
-      // HACK: clear compilation state before each call of a factory method,
-      // so we don't need to call reset() at the beginning of each method
-      f.reset // XXX: might create problems when combined with lazy compilation
-      f
-    }
+    def Factory = factory.get() // calling reset would break shared staged code
 
     protected def mkFactory: F
 
-    private val factory = new java.lang.ThreadLocal[F] {
+    private val factory = new ThreadLocal[F] {
       override def initialValue = mkFactory
     }
   }
