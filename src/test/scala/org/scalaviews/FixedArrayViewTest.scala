@@ -182,6 +182,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     val vTrueFalse = new FixedArrayView[Boolean] {
       override val size = 2
       override def apply(i: Int) = if (i == 0) true else false
+      override def slice(from: Int, to: Int) = ??? // TODO: implement
     }
     val vFalseTrue = Factory.reversed(vTrueFalse)
     vFalseTrue(0) must be (false)
