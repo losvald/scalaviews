@@ -44,6 +44,15 @@ package object scalaviews {
       with CompileScala { self =>
     type Codegen = ScalaCodeGenPkg
     val codegen = new Codegen { val IR: self.type = self }
+
+    override def compile[A, B](f: Exp[A] => Exp[B])(
+      implicit mA: Manifest[A], mB: Manifest[B]
+    ) = Console.withOut(reportOutputStream) {
+      super.compile(f)
+    }
+
+    // Suppress status reporting by default, can be overridden
+    def reportOutputStream = Util.nullOutputStream
   }
 
   private[scalaviews] object ExpOpt {
@@ -58,6 +67,14 @@ package object scalaviews {
         case (c @ Const(false), _) => c // short-circuit
         case _ => super.boolean_and(lhs, rhs)
       }
+    }
+  }
+
+  private[scalaviews] object Util {
+    val nullOutputStream = new java.io.OutputStream {
+      override def write(b: Int) = {}
+      override def write(b: Array[Byte]) = {}
+      override def write(b: Array[Byte], off: Int, len: Int) = {}
     }
   }
 }
