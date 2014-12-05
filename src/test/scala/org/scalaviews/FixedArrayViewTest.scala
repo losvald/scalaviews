@@ -41,19 +41,45 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   import FixedArrayViewTest._
 
   // bring into scope inner case classes from the factory
+  type Array1[T] = FixedArrayViewFactory#Array1[T]
   type Array2[T] = FixedArrayViewFactory#Array2[T]
   type Reversed[T] = FixedArrayViewFactory#Reversed[T]
+
+  val len5F = Factory[Int](5)
+  val len3F = Factory[Int](3)
+
+  lazy val v1Len5 = len5F(a1Len5, 0)
+  lazy val v1Len5From2 = len5F(a1Len9, 2)
+  lazy val v2Len3 = len3F(a2Len3, 0)
+
+  lazy val v1Len5From2Until4 = Factory.sliced(v1Len5, 2, 4)
+  lazy val v2Len5From1Until2 = Factory.sliced(v2Len3, 1, 2)
 
   val len5And3F = Factory[Int](5, 3)
   val len0And3F = Factory[Int](0, 3)
 
   lazy val len5And3 = len5And3F(a1Len5, a2Len3)
-  lazy val len5And3Rev = Factory.reversed(len5And3)
 
+  lazy val len5And3Rev = Factory.reversed(len5And3)
   lazy val a1Len5Rev = Factory.reversedArray(a1Len5)
   lazy val emptyDoubleRev = Factory.reversedArray(Array.empty[Double])
 
+  lazy val len5And3From1Until5 = Factory.sliced(len5And3, 1, 5)
+  lazy val len5And3From6Until7 = Factory.sliced(len5And3, 6, 7)
+  lazy val len5And3From4Until6 = Factory.sliced(len5And3, 4, 6)
+
   lazy val len5And3Dbl = Factory._doubled(len5And3)
+
+  test("ctor - Array1") {
+    an [IllegalArgumentException] must be thrownBy len3F(a1Len5, 4)
+    an [IllegalArgumentException] must be thrownBy len3F(a1Len5, -1)
+    an [IllegalArgumentException] must be thrownBy Factory[Double](-1)
+  }
+
+  test("size - Array1") {
+    v2Len3.size must be (3)
+    v1Len5From2.size must be (5)
+  }
 
   test("size - 2 chunks") {
     assert(len5And3F(a1Len5, a2Len3).size === 8)
@@ -75,7 +101,13 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3Dbl(4) must be (80); len5And3Dbl(5) must be (1000)
   }
 
-  test("apply - 2 chunks (Int)") {
+  test("apply - Array1") {
+    v2Len3(1) must be (600)
+    v1Len5From2(0) must be (20)
+    v1Len5From2(2) must be (40)
+  }
+
+  test("apply - Array2 (Int)") {
     assert(len5And3(0) === 0)
     assert(len5And3(1) === 10)
     assert(len5And3(4) === 40)
@@ -83,7 +115,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     assert(len5And3(7) === 700)
   }
 
-  test("apply - 2 chunks (Double)") {
+  test("apply - Array2 (Double)") {
     val piF = Factory[Double](2, 2)
     val pi = piF(Array(3.0, 0.1), Array(0.04, 0.001))
     assert(pi(0) === 3)
@@ -91,7 +123,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     assert(pi(2) === 0.04)
   }
 
-  test("apply - 2 chunks (first empty)") {
+  test("apply - Array2 (first empty)") {
     val len0And3 = len0And3F(Array.empty, a2Len3)
     assert(len0And3(0) === 500)
     assert(len0And3(1) === 600)
@@ -175,9 +207,37 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3DblRev(2) must be (1000)
     len5And3DblRev(7) must be (0)
   }
+
+  test("apply - sliced of Array1") {
+    v1Len5From2Until4(0) must be (20)
+    v1Len5From2Until4(1) must be (30)
+    v2Len5From1Until2(0) must be (600)
+  }
+
+  test("apply - sliced of Array2") {
+    for (i <- 1 until 5)
+      assert(len5And3(i) === len5And3From1Until5(i - 1), "for i=" + i)
+    len5And3From1Until5 must be (anInstanceOf[Array1[_]])
+
+    len5And3From6Until7(0) must be (600)
+    len5And3From6Until7 must be (anInstanceOf[Array1[_]])
+
+    len5And3From4Until6(0) must be (40)
+    len5And3From4Until6(1) must be (500)
+    len5And3From4Until6 must be (anInstanceOf[Array2[_]])
+  }
+
+  test("apply - sliced of generic") {
+    val len5And3DblFrom3Until7 = Factory.sliced(len5And3Dbl, 3, 7)
+    for (i <- 3 until 7)
+      assert(len5And3Dbl(i) === len5And3DblFrom3Until7(i - 3), "for i=" + i)
+    len5And3DblFrom3Until7 must not be (anInstanceOf[Array1[_]])
+    len5And3DblFrom3Until7 must not be (anInstanceOf[Array2[_]])
+  }
 }
 
 class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
+    with ClassMatchers
     with BeforeAndAfterAll
     with ViewFactoryProvider[FixedArrayViewFactory] {
   import FixedArrayViewTest.{a1Len5, a2Len3}
@@ -194,16 +254,35 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
   import scala.language.reflectiveCalls
   import scala.reflect.runtime.universe._
 
+  val len5F = Factory[Int](5)
+
+  lazy val len5 = len5F(a1Len5, 0)
+
+  lazy val len5From2Until7 = Factory.sliced(len5, 2, 7)
+
   lazy val len19And23F = Factory[Int](19, 23)
   lazy val len19And23 = len19And23F(a1Len5, a2Len3)
 
   lazy val len0And3F = Factory[Int](0, 3)
   lazy val len0And3 = len0And3F(Array.empty, a2Len3)
 
+  lazy val len19And23Dbl = Factory._doubled(len19And23)
+
   lazy val len0And3Rev = Factory.reversed(len0And3)
   lazy val len19And23Rev = Factory.reversed(len19And23)
 
-  test("applyC - 2 chunks") {
+  lazy val len19And23From13Until18 = Factory.sliced(len19And23, 13, 18)
+  lazy val len19And23From18Until21 = Factory.sliced(len19And23, 18, 21)
+  lazy val len19And23From21Until42 = Factory.sliced(len19And23, 21, 42)
+
+  test("applyC - Array1") {
+    val method = len5.applyC
+    method.body must contain noneOf ('-', '+')
+    method.body must not include ("if")
+    method.body.count(_ == '\n') must be (2)
+  }
+
+  test("applyC - Array2") {
     val method = len19And23.applyC
     method.paramType must be (ofType[Int])
     method.resultType must be (ofType[Int])
@@ -212,7 +291,7 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     method.body must not include ("&&")
   }
 
-  test("applyC - 2 chunks (first empty)") {
+  test("applyC - Array2 (first empty)") {
     // verify the branching and boolean and is optimized away, since
     val method = len0And3.applyC
     method.body must not include ("- 0")
@@ -238,10 +317,60 @@ val ([^ ]*) = \1\(.*
     method.body.count(_ == '\n') must be (3)
   }
 
-  test("applyC - reversed (generic)") {
-    val len19And23Dbl = Factory._doubled(len19And23)
+  test("applyC - reversed of generic") {
     len19And23Dbl.apply(1) must be (20)
     val len19And23DblRev = Factory.reversed(len19And23Dbl)
     an [ClassCastException] must be thrownBy getApplyC(len19And23DblRev)
+    len19And23DblRev must not be (anInstanceOf[ApplyS[_]])
+  }
+
+  test("applyC - sliced of Array1") {
+    val method = getApplyC(len5From2Until7)
+    method.body.count(_ == '+') must be (1)
+    method.body must include ("2")
+    method.body must not include ("if")
+  }
+
+  test("applyC - sliced of Array2 (both chunks)") {
+    val method = getApplyC(len19And23From18Until21)
+    method.body.count(_ == '+') must be (1)
+    method.body must include ("if")
+    method.body must include ("else")
+  }
+
+  test("applyC - sliced of Array2 (1st chunk only)") {
+    val method = getApplyC(len19And23From13Until18)
+    method.body.count(_ == '+') must be (1)
+    method.body must include ("13")
+    method.body must not include ("if")
+    method.body must not include ("else")
+  }
+
+  test("applyC - sliced of Array2 (2nd chunk only)") {
+    val method = getApplyC(len19And23From21Until42)
+    method.body.count(_ == '+') must be (1)
+    method.body must include ("2")
+    method.body must not include ("if")
+    method.body must not include ("else")
+  }
+
+  test("applyC - sliced of generic") {
+    val len19And23DblFrom18To21 = Factory.sliced(len19And23Dbl, 18, 21)
+    len19And23DblFrom18To21 must not be (anInstanceOf[ApplyS[_]])
+  }
+
+  test("applyC - reversed of sliced of Array2 (2nd chunk only)") {
+    val len19And23From21Until42Rev = Factory.reversed(len19And23From21Until42)
+    val method = getApplyC(len19And23From21Until42Rev)
+    method.body must not include ("if")
+    method.body must not include ("else")
+
+    // verify that "2 + (20 - x)" is optimized to "22 - x"
+    // TODO: support such an arithmetic optimization in FixedArrayViewFactory
+    // method.body must not contain allOf ('-', '+')
+    // method.body must not include ("20")
+    // method.body must not include ("2")
+    // method.body must include ("22")
+    // method.body.count(_ == '-') must be (1)
   }
 }

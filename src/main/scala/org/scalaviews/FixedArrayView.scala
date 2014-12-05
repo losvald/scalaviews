@@ -41,7 +41,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     with StaticData
     with IfThenElse
     // with IfThenElse with Equal
-    // with NumericOps with PrimitiveOps with BooleanOps
+    with NumericOps with PrimitiveOps with BooleanOps
     // with RangeOps with OrderingOps with MiscOps with ArrayOps with StringOps
     // with SeqOps with Functions with While with Variables with LiftVariables
     // with ObjectOps
@@ -67,6 +67,27 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] val applyC: Int => T
   }
 
+  private[scalaviews] abstract case class Array1[T: Manifest]()
+      extends FixedArrayView[T] with ApplyS[T] {
+    // TODO: staging might be an overkill here, but it makes other code easier
+    // (note that "a" cannot be a class parameter since it should be lazy)
+    private[scalaviews] val a: Rep[Array[T]]
+  }
+
+  def apply[T: Manifest](len: Int) = {
+    require(len >= 0)
+    (arr: Array[T], offset: Int) => {
+      require(arr != null)
+      require(0 <= offset && offset <= len)
+      new Array1[T] {
+        override val size = len
+        override private[scalaviews] def applyS(i: Rep[Int]) = a(i + offset)
+        override private[scalaviews] lazy val applyC = compile(applyS)
+        override private[scalaviews] lazy val a = staticData(arr)
+      }
+    }
+  }
+
   // case class remembers len1 and len2, so they can be used for optimizations
   private[scalaviews] abstract case class Array2[T: Manifest](len1: Int)
       extends FixedArrayView[T] with ApplyS[T] {
@@ -89,8 +110,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       require(arr1 != null & arr2 != null)
       new Array2(len1) {
         override val size = len1 + len2
-        private[scalaviews] override lazy val a1 = staticData(arr1)
-        private[scalaviews] override lazy val a2 = staticData(arr2)
+        override private[scalaviews] lazy val a1 = staticData(arr1)
+        override private[scalaviews] lazy val a2 = staticData(arr2)
       }
       // new FixedArrayView[T] with ApplyS[T] {
       //   override val size = len1 + len2
@@ -131,7 +152,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
   trait ReversedApplyS[T] extends ApplyS[T] { this: FixedArrayView[T] =>
     private[scalaviews] val rev: ApplyS[T]
-    private[scalaviews] override def applyS(i: Rep[Int]): Rep[T] =
+    override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
        rev.applyS(size - 1 - i)
   }
 
@@ -144,7 +165,14 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       override def apply(i: Int) = arr(i)
     }
     // cases which require staging to eliminate overhead
+    case vRev @ Array1() => new Array1[T] with ReversedApplyS[T] {
+      override val size = vRev.size
+      override private[scalaviews] lazy val applyC = compile(applyS)
+      override private[scalaviews] lazy val a = vRev.a
+      override private[scalaviews] val rev = vRev
+    }
     case vRev @ Array2(len1) =>
+      // TODO: not ideal because reversed(reversed(Array2)) doesn't give Array2
       new Reversed[T](vRev) with ReversedApplyS[T] {
         private[scalaviews] lazy val applyC = compile(applyS)
         override val rev = vRev // override both fields (so it must public)
@@ -176,12 +204,67 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     implicit n: Numeric[T]
   ) = new FixedArrayView[T] with ApplyS[T] {
     override val size = v.size
-    private[scalaviews] override def applyS(i: Rep[Int]) = {
+    override private[scalaviews] def applyS(i: Rep[Int]) = {
       import n.mkNumericOps
       v.asInstanceOf[ApplyS[T]].applyS(i) +
       v.asInstanceOf[ApplyS[T]].applyS(i)
     }
     private[scalaviews] lazy val applyC = compile(applyS)
+  }
+
+  def sliced[T: Manifest](v: FixedArrayView[T], from: Int, until: Int):
+      FixedArrayView[T]  = {
+    require(0 <= from && from <= until)
+    val _size = until - from
+    v match {
+      case v @ Array1() => new Array1[T]() {
+        override val size = _size
+        override private[scalaviews] def applyS(i: Rep[Int]) =
+          v.applyS(from + i)
+        override private[scalaviews] lazy val applyC = compile(applyS)
+        override private[scalaviews] lazy val a = v.a
+      }
+      case v @ Array2(len1) =>
+        if (from >= len1) new Array1[T] {
+          override val size = _size
+          override private[scalaviews] def applyS(i: Rep[Int]) =
+            a((from - len1) + i)
+          override private[scalaviews] lazy val applyC = compile(applyS)
+          override private[scalaviews] lazy val a = v.a2
+        }
+        else if (until <= len1) new Array1[T] {
+          override val size = _size
+          override private[scalaviews] def applyS(i: Rep[Int]) =
+            a(from + i)
+          override private[scalaviews] lazy val applyC = compile(applyS)
+          override private[scalaviews] lazy val a = v.a1
+        }
+        else new Array2[T](len1 - from) {
+          override val size = _size
+          // TODO: optimize so we don't nest applyS methods arbitrarily deep
+          // For that, we need to either introduce a case class for sliced views
+          // or add the slicing info as a parameter/field of existing case class
+          override private[scalaviews] def applyS(i: Rep[Int]) =
+            v.applyS(i + from)
+          override private[scalaviews] lazy val applyC = compile(applyS)
+          override private[scalaviews] lazy val a1 = v.a1
+          override private[scalaviews] lazy val a2 = v.a2
+        }
+      case _ => new FixedArrayView[T] {
+        override val size = _size
+        override def apply(i: Int) = apply0(i)
+
+        lazy val apply0: (Int => T) = v match { // ensure match is done only once
+          case v: ApplyS[T] => (i: Int) => applyC(i)
+          case _ => (i: Int) => v.apply(i + from)
+        }
+
+        // HACK: use laziness to prevent illegal cast
+        lazy val applyC = compile { i: Rep[Int] =>
+          v.asInstanceOf[ApplyS[T]].applyS(i + from)
+        }
+      }
+    }
   }
 }
 
