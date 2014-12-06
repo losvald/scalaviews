@@ -67,66 +67,42 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] val applyC: Int => T
   }
 
-  private[scalaviews] abstract case class Array1[T: Manifest]()
-      extends FixedArrayView[T] with ApplyS[T] {
+  private[scalaviews] abstract case class Array1[T: Manifest](
+    override val size: Int,
+    a: Rep[Array[T]]
     // TODO: staging might be an overkill here, but it makes other code easier
-    // (note that "a" cannot be a class parameter since it should be lazy)
-    private[scalaviews] val a: Rep[Array[T]]
-  }
+  ) extends FixedArrayView[T] with ApplyS[T]
 
   def apply[T: Manifest](len: Int) = {
     require(len >= 0)
     (arr: Array[T], offset: Int) => {
       require(arr != null)
       require(0 <= offset && offset <= len)
-      new Array1[T] {
-        override val size = len
+      new Array1[T](len, staticData(arr)) {
         override private[scalaviews] def applyS(i: Rep[Int]) = a(i + offset)
         override private[scalaviews] lazy val applyC = compile(applyS)
-        override private[scalaviews] lazy val a = staticData(arr)
       }
     }
   }
 
   // case class remembers len1 and len2, so they can be used for optimizations
-  private[scalaviews] abstract case class Array2[T: Manifest](len1: Int)
-      extends FixedArrayView[T] with ApplyS[T] {
+  private[scalaviews] case class Array2[T: Manifest](
+    override val size: Int,
+    a1: Rep[Array[T]], len1: Int,
+    a2: Rep[Array[T]]
+  ) extends FixedArrayView[T] with ApplyS[T] {
     override private[scalaviews] lazy val applyC = compile(applyS)
     override private[scalaviews] def applyS(i: Rep[Int]) = {
       if (len1 > 0 && i < len1) a1(i)
       else a2(i - len1)
     }
-
-    private[scalaviews] val a1: Rep[Array[T]]
-    private[scalaviews] val a2: Rep[Array[T]]
   }
 
-  // import scala.reflect.runtime.universe._
-  // import scala.reflect._
-  // def apply[T: ClassTag : TypeTag](len1: Int, len2: Int) = {
   def apply[T: Manifest](len1: Int, len2: Int) = {
     require(len1 >= 0 & len2 >= 0)
     (arr1: Array[T], arr2: Array[T]) => { // this compiles for each a1/2
       require(arr1 != null & arr2 != null)
-      new Array2(len1) {
-        override val size = len1 + len2
-        override private[scalaviews] lazy val a1 = staticData(arr1)
-        override private[scalaviews] lazy val a2 = staticData(arr2)
-      }
-      // new FixedArrayView[T] with ApplyS[T] {
-      //   override val size = len1 + len2
-
-      //   override private[scalaviews] lazy val applyC = compile(applyS)
-      //   // Cannot be public as per 3.2.7 (Parameter type in structural refinement
-      //   // may not refer to an abstract type defined outside that refinement)
-      //   override private[scalaviews] def applyS(i: Rep[Int]) = {
-      //     if (len1 > 0 && i < len1) a1(i)
-      //     else a2(i - len1)
-      //   }
-
-      //   private lazy val a1 = staticData(arr1)
-      //   private lazy val a2 = staticData(arr2)
-      // }
+      new Array2(len1 + len2, staticData(arr1), len1, staticData(arr2))
     }
   }
 
@@ -136,12 +112,11 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       // (instead of using staticData(arr) we could store (size - 1))
         with ApplyS[T] {
       override val size = arr.length
-
       override def apply(i: Int) = applyC(i)
       override private[scalaviews] lazy val applyC = compile(applyS)
       override private[scalaviews] def applyS(i: Rep[Int]) = a((size - 1) - i)
 
-      private lazy val a = staticData(arr)
+      private val a = staticData(arr)
     }
   }
 
@@ -165,13 +140,12 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       override def apply(i: Int) = arr(i)
     }
     // cases which require staging to eliminate overhead
-    case vRev @ Array1() => new Array1[T] with ReversedApplyS[T] {
-      override val size = vRev.size
-      override private[scalaviews] lazy val applyC = compile(applyS)
-      override private[scalaviews] lazy val a = vRev.a
-      override private[scalaviews] val rev = vRev
-    }
-    case vRev @ Array2(len1) =>
+    case vRev @ Array1(size, a) =>
+      new Array1[T](size, a) with ReversedApplyS[T] {
+        override private[scalaviews] lazy val applyC = compile(applyS)
+        override private[scalaviews] val rev = vRev
+      }
+    case vRev @ Array2(size, a1, len1, a2) =>
       // TODO: not ideal because reversed(reversed(Array2)) doesn't give Array2
       new Reversed[T](vRev) with ReversedApplyS[T] {
         private[scalaviews] lazy val applyC = compile(applyS)
@@ -217,44 +191,35 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     require(0 <= from && from <= until)
     val _size = until - from
     v match {
-      case v @ Array1() => new Array1[T]() {
-        override val size = _size
+      case v @ Array1(_, a) => new Array1[T](_size, a) {
         override private[scalaviews] def applyS(i: Rep[Int]) =
           v.applyS(from + i)
         override private[scalaviews] lazy val applyC = compile(applyS)
-        override private[scalaviews] lazy val a = v.a
       }
-      case v @ Array2(len1) =>
-        if (from >= len1) new Array1[T] {
-          override val size = _size
+      case v @ Array2(_, a1, len1, a2) =>
+        if (from >= len1) new Array1[T](_size, a2) {
           override private[scalaviews] def applyS(i: Rep[Int]) =
             a((from - len1) + i)
           override private[scalaviews] lazy val applyC = compile(applyS)
-          override private[scalaviews] lazy val a = v.a2
         }
-        else if (until <= len1) new Array1[T] {
-          override val size = _size
+        else if (until <= len1) new Array1[T](_size, a1) {
           override private[scalaviews] def applyS(i: Rep[Int]) =
             a(from + i)
           override private[scalaviews] lazy val applyC = compile(applyS)
-          override private[scalaviews] lazy val a = v.a1
         }
-        else new Array2[T](len1 - from) {
-          override val size = _size
+        else new Array2[T](_size, a1, len1 - from, a2) {
           // TODO: optimize so we don't nest applyS methods arbitrarily deep
           // For that, we need to either introduce a case class for sliced views
           // or add the slicing info as a parameter/field of existing case class
           override private[scalaviews] def applyS(i: Rep[Int]) =
             v.applyS(i + from)
           override private[scalaviews] lazy val applyC = compile(applyS)
-          override private[scalaviews] lazy val a1 = v.a1
-          override private[scalaviews] lazy val a2 = v.a2
         }
       case _ => new FixedArrayView[T] {
         override val size = _size
         override def apply(i: Int) = apply0(i)
 
-        lazy val apply0: (Int => T) = v match { // ensure match is done only once
+        lazy val apply0: (Int => T) = v match { // ensure match is done once
           case v: ApplyS[T] => (i: Int) => applyC(i)
           case _ => (i: Int) => v.apply(i + from)
         }

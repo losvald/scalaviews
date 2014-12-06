@@ -130,9 +130,10 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     assert(len0And3(2) === 700)
   }
 
-  test("apply - reversed of Array1") {
+  test("reversed - Array1") {
     val aPiDigit0To4 = Array(3, 1, 4, 1, 5)
     val vPiDigit4To0 = Factory.reversedArray(aPiDigit0To4)
+    vPiDigit4To0.size must be (5)
     vPiDigit4To0 must be (anInstanceOf[ReversedArray1[_]])
 
     // verify update to array is seen by the view
@@ -146,27 +147,29 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     // assert(aPiDigit0To4(2) === 444)
   }
 
-  test("apply - reversed of reversed of Array1") {
+  test("reversed - reversed of Array1") {
     a1Len5Rev must be (anInstanceOf[ReversedArray1[_]]) // sanity check
     val a1Len5RevTwice = Factory.reversed(a1Len5Rev)
     a1Len5RevTwice must not be (anInstanceOf[ReversedArray1[_]])
+    a1Len5RevTwice.size must be (5)
     for (i <- 0 until 5)
       assert(a1Len5(i) === a1Len5RevTwice(i), "for i=" + i)
   }
 
-  test("apply - reversed of Array2") {
+  test("reversed - Array2") {
     for (i <- 0 until 8)
       assert(len5And3Rev(i) === len5And3(7 - i), "for i=" + i)
     len5And3Rev must be (anInstanceOf[Reversed[_]])
   }
 
-  test("apply - reversed of Array2 (first empty)") {
+  test("reversed - Array2 (first empty)") {
     val aPiDigit0To4 = Array(3, 1, 4, 1, 5)
     val vPiDigit0To4F = Factory[Int](aPiDigit0To4.length, 0)
     val vPiDigit0To4 = vPiDigit0To4F(aPiDigit0To4, Array.empty)
     val vPiDigit4To0 = Factory.reversed(vPiDigit0To4)
     vPiDigit4To0 must not be (anInstanceOf[ReversedArray1[_]])
     vPiDigit4To0 must be (anInstanceOf[Reversed[_]])
+    vPiDigit4To0.size must be (5)
     vPiDigit4To0(0) must be (5)
     vPiDigit4To0(4) must be (3)
 
@@ -178,7 +181,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     // vPiDigit4To0(0) must be (50)
   }
 
-  test("apply - reversed of generic (non-staged)") {
+  test("reversed - generic (non-staged)") {
     val vTrueFalse = new FixedArrayView[Boolean] {
       override val size = 2
       override def apply(i: Int) = if (i == 0) true else false
@@ -186,9 +189,10 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     val vFalseTrue = Factory.reversed(vTrueFalse)
     vFalseTrue(0) must be (false)
     vFalseTrue(1) must be (true)
+    vFalseTrue.size must be (2)
   }
 
-  test("apply - reversed of generic (staged)") {
+  test("reversed - generic (staged)") {
     // Factory is not a stable identifier and FixedArrayViewFactory is a trait,
     // so it seems like we need to extend the factory if we want to use
     // path-dependent types ApplyS and Rep,
@@ -208,27 +212,33 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3DblRev(7) must be (0)
   }
 
-  test("apply - sliced of Array1") {
+  test("sliced - Array1") {
+    v1Len5From2Until4.size must be (4 - 2)
     v1Len5From2Until4(0) must be (20)
     v1Len5From2Until4(1) must be (30)
+    v2Len5From1Until2.size must be (2 - 1)
     v2Len5From1Until2(0) must be (600)
   }
 
-  test("apply - sliced of Array2") {
+  test("sliced - Array2") {
+    len5And3From1Until5.size must be (5 - 1)
     for (i <- 1 until 5)
       assert(len5And3(i) === len5And3From1Until5(i - 1), "for i=" + i)
     len5And3From1Until5 must be (anInstanceOf[Array1[_]])
 
+    len5And3From6Until7.size must be (7 - 6)
     len5And3From6Until7(0) must be (600)
     len5And3From6Until7 must be (anInstanceOf[Array1[_]])
 
+    len5And3From4Until6.size must be (6 - 4)
     len5And3From4Until6(0) must be (40)
     len5And3From4Until6(1) must be (500)
     len5And3From4Until6 must be (anInstanceOf[Array2[_]])
   }
 
-  test("apply - sliced of generic") {
+  test("sliced - generic") {
     val len5And3DblFrom3Until7 = Factory.sliced(len5And3Dbl, 3, 7)
+    len5And3DblFrom3Until7.size must be (7 - 3)
     for (i <- 3 until 7)
       assert(len5And3Dbl(i) === len5And3DblFrom3Until7(i - 3), "for i=" + i)
     len5And3DblFrom3Until7 must not be (anInstanceOf[Array1[_]])
@@ -305,40 +315,40 @@ val ([^ ]*) = \1\(.*
 
   def getApplyC[T](v: FixedArrayView[T]) = v.asInstanceOf[ApplyS[_]].applyC
 
-  test("applyC - reversed of Array2") {
+  test("reversed - Array2") {
     val method = getApplyC(len19And23Rev)
     method.body must startWith regex "val .* = 41 - .*"
   }
 
-  test("applyC - reversed of Array2 (first empty)") {
+  test("reversed - Array2 (first empty)") {
     val method = getApplyC(len0And3Rev)
     method.body must include ("2 -")
     method.body must not include ("if")
     method.body.count(_ == '\n') must be (3)
   }
 
-  test("applyC - reversed of generic") {
+  test("reversed - generic") {
     len19And23Dbl.apply(1) must be (20)
     val len19And23DblRev = Factory.reversed(len19And23Dbl)
     an [ClassCastException] must be thrownBy getApplyC(len19And23DblRev)
     len19And23DblRev must not be (anInstanceOf[ApplyS[_]])
   }
 
-  test("applyC - sliced of Array1") {
+  test("sliced - Array1") {
     val method = getApplyC(len5From2Until7)
     method.body.count(_ == '+') must be (1)
     method.body must include ("2")
     method.body must not include ("if")
   }
 
-  test("applyC - sliced of Array2 (both chunks)") {
+  test("sliced - Array2 (both chunks)") {
     val method = getApplyC(len19And23From18Until21)
     method.body.count(_ == '+') must be (1)
     method.body must include ("if")
     method.body must include ("else")
   }
 
-  test("applyC - sliced of Array2 (1st chunk only)") {
+  test("sliced - Array2 (1st chunk only)") {
     val method = getApplyC(len19And23From13Until18)
     method.body.count(_ == '+') must be (1)
     method.body must include ("13")
@@ -346,7 +356,7 @@ val ([^ ]*) = \1\(.*
     method.body must not include ("else")
   }
 
-  test("applyC - sliced of Array2 (2nd chunk only)") {
+  test("sliced - Array2 (2nd chunk only)") {
     val method = getApplyC(len19And23From21Until42)
     method.body.count(_ == '+') must be (1)
     method.body must include ("2")
@@ -354,12 +364,12 @@ val ([^ ]*) = \1\(.*
     method.body must not include ("else")
   }
 
-  test("applyC - sliced of generic") {
+  test("sliced - generic") {
     val len19And23DblFrom18To21 = Factory.sliced(len19And23Dbl, 18, 21)
     len19And23DblFrom18To21 must not be (anInstanceOf[ApplyS[_]])
   }
 
-  test("applyC - reversed of sliced of Array2 (2nd chunk only)") {
+  test("reversed - Array2 (2nd chunk only)") {
     val len19And23From21Until42Rev = Factory.reversed(len19And23From21Until42)
     val method = getApplyC(len19And23From21Until42Rev)
     method.body must not include ("if")
