@@ -106,17 +106,24 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     }
   }
 
-  def reversedArray[T: Manifest](arr: Array[T]) = {
-    new FixedArrayView.ReversedArray1[T](arr)
-      // TODO: Is staging overhead worth avoiding computation of (size - 1)?
-      // (instead of using staticData(arr) we could store (size - 1))
-        with ApplyS[T] {
-      override val size = arr.length
-      override private[scalaviews] def applyS(i: Rep[Int]) = a((size - 1) - i)
+  trait ReversedApplyS[T] extends ApplyS[T] { this: FixedArrayView[T] =>
+    private[scalaviews] val rev: ApplyS[T]
+    override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
+       rev.applyS(size - 1 - i)
+  }
 
-      private val a = staticData(arr)
-      override private[scalaviews] val t = manifest[T]
-    }
+  private[scalaviews] case class ReversedArray1[T: Manifest](
+    private[scalaviews] val rev: Array1[T]
+  ) extends FixedArrayView[T] with ReversedApplyS[T] {
+    override val size = rev.size
+    private[scalaviews] override val t = manifest[T]
+  }
+
+  private[scalaviews] case class ReversedArray2[T: Manifest](
+    private[scalaviews] val rev: Array2[T]
+  ) extends FixedArrayView[T] with ReversedApplyS[T] {
+    override val size = rev.size
+    private[scalaviews] override val t = manifest[T]
   }
 
   private[scalaviews] abstract case class Reversed[T](rev: FixedArrayView[T])
@@ -124,31 +131,15 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override val size = rev.size
   }
 
-  trait ReversedApplyS[T] extends ApplyS[T] { this: FixedArrayView[T] =>
-    private[scalaviews] val rev: ApplyS[T]
-    override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
-       rev.applyS(size - 1 - i)
-  }
-
   // TODO: move to companion object as FixedArrayViewFactory.Reversed.apply?
   def reversed[T: Manifest](v: FixedArrayView[T]) = v match {
     // cases which do not require staging
     case Reversed(vOrig) => vOrig
-    case FixedArrayView.ReversedArray1(arr) => new FixedArrayView[T] {
-      override val size = arr.length
-      override def apply(i: Int) = arr(i)
-    }
+    case ReversedArray1(vOrig) => vOrig
+    case ReversedArray2(vOrig) => vOrig
     // cases which require staging to eliminate overhead
-    case vRev @ Array1(size, a) =>
-      new Array1[T](size, a) with ReversedApplyS[T] {
-        override private[scalaviews] val rev = vRev
-      }
-    case vRev @ Array2(size, a1, len1, a2) =>
-      // TODO: not ideal because reversed(reversed(Array2)) doesn't give Array2
-      new Reversed[T](vRev) with ReversedApplyS[T] {
-        override val rev = vRev // override both fields (so it must public)
-        override private[scalaviews] val t = manifest[T]
-      }
+    case v @ Array1(_, _) => new ReversedArray1(v)
+    case v @ Array2(_, _, _, _) => new ReversedArray2[T](v)
     case _ => new Reversed[T](v) {
       override def apply(i: Int) = apply0(i)
 
@@ -238,7 +229,4 @@ object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
   }
 
   override protected def mkFactory = new FixedArrayViewFactory with Driver
-
-  private[scalaviews] abstract case class ReversedArray1[T](arr: Array[T])
-      extends FixedArrayView[T]
 }

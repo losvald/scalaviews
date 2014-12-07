@@ -43,10 +43,13 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   // bring into scope inner case classes from the factory
   type Array1[T] = FixedArrayViewFactory#Array1[T]
   type Array2[T] = FixedArrayViewFactory#Array2[T]
+  type ReversedArray1[T] = FixedArrayViewFactory#ReversedArray1[T]
+  type ReversedArray2[T] = FixedArrayViewFactory#ReversedArray2[T]
   type Reversed[T] = FixedArrayViewFactory#Reversed[T]
 
   val len5F = Factory[Int](5)
   val len3F = Factory[Int](3)
+  val len0F = Factory[Double](0)
 
   lazy val v1Len5 = len5F(a1Len5, 0)
   lazy val v1Len5From2 = len5F(a1Len9, 2)
@@ -60,9 +63,11 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   lazy val len5And3 = len5And3F(a1Len5, a2Len3)
 
+  lazy val emptyDouble = len0F(Array.empty[Double], 0)
+
   lazy val len5And3Rev = Factory.reversed(len5And3)
-  lazy val a1Len5Rev = Factory.reversedArray(a1Len5)
-  lazy val emptyDoubleRev = Factory.reversedArray(Array.empty[Double])
+  lazy val a1Len5Rev = Factory.reversed(v1Len5)
+  lazy val emptyDoubleRev = Factory.reversed(emptyDouble)
 
   lazy val len5And3From1Until5 = Factory.sliced(len5And3, 1, 5)
   lazy val len5And3From6Until7 = Factory.sliced(len5And3, 6, 7)
@@ -132,7 +137,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   test("reversed - Array1") {
     val aPiDigit0To4 = Array(3, 1, 4, 1, 5)
-    val vPiDigit4To0 = Factory.reversedArray(aPiDigit0To4)
+    val vPiDigit4To0 = Factory.reversed(len5F(aPiDigit0To4, 0))
     vPiDigit4To0.size must be (5)
     vPiDigit4To0 must be (anInstanceOf[ReversedArray1[_]])
 
@@ -151,6 +156,8 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     a1Len5Rev must be (anInstanceOf[ReversedArray1[_]]) // sanity check
     val a1Len5RevTwice = Factory.reversed(a1Len5Rev)
     a1Len5RevTwice must not be (anInstanceOf[ReversedArray1[_]])
+    a1Len5RevTwice must be (anInstanceOf[Array1[_]])
+    assert(a1Len5RevTwice eq v1Len5) // verify the same instance
     a1Len5RevTwice.size must be (5)
     for (i <- 0 until 5)
       assert(a1Len5(i) === a1Len5RevTwice(i), "for i=" + i)
@@ -159,7 +166,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   test("reversed - Array2") {
     for (i <- 0 until 8)
       assert(len5And3Rev(i) === len5And3(7 - i), "for i=" + i)
-    len5And3Rev must be (anInstanceOf[Reversed[_]])
+    len5And3Rev must be (anInstanceOf[ReversedArray2[_]])
   }
 
   test("reversed - Array2 (first empty)") {
@@ -168,10 +175,14 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     val vPiDigit0To4 = vPiDigit0To4F(aPiDigit0To4, Array.empty)
     val vPiDigit4To0 = Factory.reversed(vPiDigit0To4)
     vPiDigit4To0 must not be (anInstanceOf[ReversedArray1[_]])
-    vPiDigit4To0 must be (anInstanceOf[Reversed[_]])
+    vPiDigit4To0 must be (anInstanceOf[ReversedArray2[_]])
     vPiDigit4To0.size must be (5)
     vPiDigit4To0(0) must be (5)
     vPiDigit4To0(4) must be (3)
+
+    // verify the same instance is returned after 2nd reversal, not a copy
+    val vPiDigit0To4Orig = Factory.reversed(vPiDigit4To0)
+    assert(vPiDigit0To4Orig eq vPiDigit0To4)
 
     // verify update to array is seen by the view
     // TODO: implement setters
