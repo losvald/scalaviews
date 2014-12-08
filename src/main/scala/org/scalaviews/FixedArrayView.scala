@@ -33,6 +33,11 @@ import scala.virtualization.lms.common._
 
 trait FixedArrayView[@specialized(Int, Double) T] extends (Int => T) {
   val size: Int
+  def reversed: FixedArrayView[T]
+  def sliced(from: Int, until: Int): FixedArrayView[T]
+  protected def checkSliceArguments(from: Int, until: Int): Unit = {
+    require(0 <= from && from <= until)
+  }
 }
 
 private[scalaviews]
@@ -40,20 +45,12 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     with LiftNumeric with LiftBoolean
     with StaticData
     with IfThenElse
-    // with IfThenElse with Equal
     with NumericOps with PrimitiveOps with BooleanOps
+    // with Equal
     // with RangeOps with OrderingOps with MiscOps with ArrayOps with StringOps
     // with SeqOps with Functions with While with Variables with LiftVariables
     // with ObjectOps
 {
-  // def apply[T](seq: Rep[Array[T]], len: Int, offset: Int = 0): FixedArrayView[T] = {
-  //   // require(offset + len <= seq.size)
-  //   new FixedArrayView[T] {
-  //     val size = len
-  //     // val data = seq // XXX: fixme
-  //     // def apply(i: Rep[Int]): T =
-  //   }
-  // }
 
   trait ApplyS[T] { this: FixedArrayView[T] =>
     override final def apply(i: Int): T = applyC(i)
@@ -65,11 +62,17 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] implicit val t: Manifest[T]
   }
 
-  private[scalaviews] abstract case class Array1[T: Manifest](
+  private[scalaviews] case class Array1[T: Manifest](
     override val size: Int,
     a: Rep[Array[T]]
-    // TODO: staging might be an overkill here, but it makes other code easier
   ) extends FixedArrayView[T] with ApplyS[T] {
+    override lazy val reversed = new ReversedArray1(this) // cache it
+    override def sliced(from: Int, until: Int) = {
+      checkSliceArguments(from, until)
+      new Array1Slice[T](this, from, until)
+    }
+
+    override private[scalaviews] def applyS(i: Rep[Int]) = a(i)
     override private[scalaviews] val t = manifest[T]
   }
 
@@ -78,19 +81,42 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     (arr: Array[T], offset: Int) => {
       require(arr != null)
       require(0 <= offset && offset <= len)
-      new Array1[T](len, staticData(arr)) {
-        override private[scalaviews] def applyS(i: Rep[Int]) = a(i + offset)
-        override private[scalaviews] val t = manifest[T]
-      }
+      val a1 = new Array1[T](len, staticData(arr))
+      val a: FixedArrayView[T] =
+        if (offset != 0) a1.sliced(offset, len)
+        else a1
+      a
     }
   }
 
-  // case class remembers len1 and len2, so they can be used for optimizations
+  private[scalaviews] case class Array1Slice[T: Manifest](
+    a: Array1[T],
+    from: Int, until: Int
+  ) extends FixedArrayView[T] with ApplyS[T] {
+    override val size = until - from
+    override lazy val reversed = // call ctor directly to avoid check & cache it
+      new ReversedArray1Slice(a.reversed, a.size - until, a.size - from)
+    override final def sliced(from: Int, until: Int) =
+      a.sliced(this.from + from, this.from + until)
+    override private[scalaviews] def applyS(i: Rep[Int]) = a.applyS(from + i)
+    override private[scalaviews] val t = manifest[T]
+  }
+
   private[scalaviews] case class Array2[T: Manifest](
     override val size: Int,
-    a1: Rep[Array[T]], len1: Int,
-    a2: Rep[Array[T]]
+    private[scalaviews] a1: Rep[Array[T]], len1: Int,
+    private[scalaviews] a2: Rep[Array[T]]
   ) extends FixedArrayView[T] with ApplyS[T] {
+    // TODO: consider adding len2 and letting len1/len2 be private[scalaviews]
+    override lazy val reversed = // cache it
+      new ReversedArray2[T](this, size - len1)
+    override def sliced(from: Int, until: Int): FixedArrayView[T] = {
+      checkSliceArguments(from, until)
+      if (from >= len1)
+        new Array1[T](size - len1, a2).sliced(from - len1, until - len1)
+      else if (until <= len1) new Array1[T](len1, a1).sliced(from, until)
+      else new Array2Slice[T](this, from, until)
+    }
     override private[scalaviews] def applyS(i: Rep[Int]) = {
       if (len1 > 0 && i < len1) a1(i)
       else a2(i - len1)
@@ -106,6 +132,20 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     }
   }
 
+  private[scalaviews] case class Array2Slice[T: Manifest](
+    a: Array2[T],
+    from: Int, until: Int
+  ) extends FixedArrayView[T] with ApplyS[T] {
+    override val size = until - from
+    override lazy val reversed = // call ctor directly to avoid check & cache it
+      new ReversedArray2Slice(a.reversed, a.size - until, a.size - from)
+    override def sliced(from: Int, until: Int) =
+      a.sliced(this.from + from, this.from + until)
+    override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
+      a.applyS(from + i)
+    override private[scalaviews] val t = manifest[T]
+  }
+
   trait ReversedApplyS[T] extends ApplyS[T] { this: FixedArrayView[T] =>
     private[scalaviews] val rev: ApplyS[T]
     override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
@@ -116,105 +156,90 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] val rev: Array1[T]
   ) extends FixedArrayView[T] with ReversedApplyS[T] {
     override val size = rev.size
-    private[scalaviews] override val t = manifest[T]
+    override val reversed = rev
+    override def sliced(from: Int, until: Int) = {
+      checkSliceArguments(from, until)
+      new ReversedArray1Slice(this, from, until)
+    }
+
+    override private[scalaviews] val t = manifest[T]
+  }
+
+  private[scalaviews] case class ReversedArray1Slice[T: Manifest](
+    a: ReversedArray1[T],
+    from: Int, until: Int
+  ) extends FixedArrayView[T] with ApplyS[T] {
+    override val size = until - from
+    override lazy val reversed = // call ctor directly to avoid check & cache it
+      new Array1Slice(a.reversed, a.size - until, a.size - from)
+    override final def sliced(from: Int, until: Int) =
+      a.sliced(this.from + from, this.from + until)
+    override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
+      a.applyS(from + i)
+    override private[scalaviews] val t = manifest[T]
   }
 
   private[scalaviews] case class ReversedArray2[T: Manifest](
-    private[scalaviews] val rev: Array2[T]
+    private[scalaviews] val rev: Array2[T],
+    len2: Int // cache it to avoid the frequent computation (size - rev.len1)
   ) extends FixedArrayView[T] with ReversedApplyS[T] {
     override val size = rev.size
-    private[scalaviews] override val t = manifest[T]
-  }
-
-  private[scalaviews] abstract case class Reversed[T](rev: FixedArrayView[T])
-      extends FixedArrayView[T] {
-    override val size = rev.size
-  }
-
-  // TODO: move to companion object as FixedArrayViewFactory.Reversed.apply?
-  def reversed[T: Manifest](v: FixedArrayView[T]) = v match {
-    // cases which do not require staging
-    case Reversed(vOrig) => vOrig
-    case ReversedArray1(vOrig) => vOrig
-    case ReversedArray2(vOrig) => vOrig
-    // cases which require staging to eliminate overhead
-    case v @ Array1(_, _) => new ReversedArray1(v)
-    case v @ Array2(_, _, _, _) => new ReversedArray2[T](v)
-    case _ => new Reversed[T](v) {
-      override def apply(i: Int) = apply0(i)
-
-      lazy val apply0: (Int => T) = v match { // ensure match is done only once
-        case v: ApplyS[_] => (i: Int) => applyC(i)
-        case _ => (i: Int) => v.apply(size - 1 - i) // TODO: cache (size - 1)?
-      } // TODO: should we match in outer case and mix in if instanceOf[ApplyS]?
-
-      // HACK: use laziness to prevent illegal cast
-      lazy val applyC = compile { i: Rep[Int] =>
-        v.asInstanceOf[ApplyS[T]].applyS(size - 1 - i)
-      }
-      // A cleaner way would require staging FixedArrayView:
-      // override private[scalaviews] def applyS(i: Rep[Int]) = v match {
-      //   case v: ApplyS[_] => v.applyS(size - i)
-      //   case _ => ??? // here we would need to stage
-      // }
+    override val reversed = rev
+    override def sliced(from: Int, until: Int): FixedArrayView[T] = {
+      checkSliceArguments(from, until)
+      // TODO: consider optimizing by storing Array1 portions inside Array2?
+      if (from >= len2)
+        new Array1[T](size - len2, rev.a1).reversed.sliced(
+          from - len2, until - len2)
+      else if (until <= len2)
+        new Array1[T](len2, rev.a2).reversed.sliced(from, until)
+      else new ReversedArray2Slice[T](this, from, until)
     }
+    override private[scalaviews] val t = manifest[T]
+  }
+
+  private[scalaviews] case class ReversedArray2Slice[T: Manifest](
+    a: ReversedArray2[T],
+    from: Int, until: Int
+  ) extends FixedArrayView[T] with ApplyS[T] {
+    override val size = until - from
+    // XXX: this creates a copy of the original Array2Slice
+    override lazy val reversed = // call ctor directly to avoid check & cache it
+      new Array2Slice(a.reversed, a.size - until, a.size - from)
+    override final def sliced(from: Int, until: Int) =
+      a.sliced(this.from + from, this.from + until)
+    override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
+      a.applyS(from + i)
+    override private[scalaviews] val t = manifest[T]
   }
 
   // XXX: this belongs to test code, but we apparently cannot:
   // - mix the staged code (Rep etc.) from here with the one from subclass
   // - use Rep from outside the factory
-  private[scalaviews] def _doubled[T: Manifest](v: FixedArrayView[T])(
+  private[scalaviews] def _doubled[T: Manifest](v0: FixedArrayView[T])(
     implicit n: Numeric[T]
-  ) = new FixedArrayView[T] with ApplyS[T] {
-    override val size = v.size
-    override private[scalaviews] def applyS(i: Rep[Int]) = {
-      import n.mkNumericOps
-      v.asInstanceOf[ApplyS[T]].applyS(i) +
-      v.asInstanceOf[ApplyS[T]].applyS(i)
-    }
-    override private[scalaviews] val t = manifest[T]
-  }
-
-  def sliced[T: Manifest](v: FixedArrayView[T], from: Int, until: Int):
-      FixedArrayView[T]  = {
-    require(0 <= from && from <= until)
-    val _size = until - from
-    v match {
-      case v @ Array1(_, a) => new Array1[T](_size, a) {
-        override private[scalaviews] def applyS(i: Rep[Int]) =
-          v.applyS(from + i)
+  ): FixedArrayView[T] = {
+    val v = v0.asInstanceOf[FixedArrayView[T] with ApplyS[T]]
+    class Doubled(from: Int, until: Int) extends FixedArrayView[T]
+        with ApplyS[T] {
+      override val size = until - from
+      override private[scalaviews] def applyS(i0: Rep[Int]) = {
+        import n.mkNumericOps
+        val i = from + i0
+        v.applyS(i) + v.applyS(i)
       }
-      case v @ Array2(_, a1, len1, a2) =>
-        if (from >= len1) new Array1[T](_size, a2) {
-          override private[scalaviews] def applyS(i: Rep[Int]) =
-            a((from - len1) + i)
-        }
-        else if (until <= len1) new Array1[T](_size, a1) {
-          override private[scalaviews] def applyS(i: Rep[Int]) =
-            a(from + i)
-        }
-        else new Array2[T](_size, a1, len1 - from, a2) {
-          // TODO: optimize so we don't nest applyS methods arbitrarily deep
-          // For that, we need to either introduce a case class for sliced views
-          // or add the slicing info as a parameter/field of existing case class
-          override private[scalaviews] def applyS(i: Rep[Int]) =
-            v.applyS(i + from)
-        }
-      case _ => new FixedArrayView[T] {
-        override val size = _size
-        override def apply(i: Int) = apply0(i)
-
-        lazy val apply0: (Int => T) = v match { // ensure match is done once
-          case v: ApplyS[T] => (i: Int) => applyC(i)
-          case _ => (i: Int) => v.apply(i + from)
-        }
-
-        // HACK: use laziness to prevent illegal cast
-        lazy val applyC = compile { i: Rep[Int] =>
-          v.asInstanceOf[ApplyS[T]].applyS(i + from)
-        }
+      override lazy val reversed: Doubled = new Doubled(from, until)
+          with ReversedApplyS[T] {
+        override lazy val reversed = rev
+        override def sliced(from: Int, until: Int) =
+          Doubled.this.sliced(v.size - until, v.size - from).reversed
+        override private[scalaviews] val rev = Doubled.this
       }
+      override def sliced(from: Int, until: Int) =
+        new Doubled(from, until)
+      override private[scalaviews] val t = manifest[T]
     }
+    new Doubled(0, v.size)
   }
 }
 
