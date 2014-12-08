@@ -54,9 +54,9 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   val len3F = Factory[Int](3)
   val len0F = Factory[Double](0)
 
-  lazy val v1Len5 = len5F(a1Len5, 0)
-  lazy val v1Len5From2 = len5F(a1Len5, 2)
-  lazy val v2Len3 = len3F(a2Len3, 0)
+  lazy val v1Len5 = len5F(a1Len5)
+  lazy val v1Len5From2 = len5F(a1Len5).sliced(2)
+  lazy val v2Len3 = len3F(a2Len3)
 
   lazy val v1Len5From2Until4 = v1Len5.sliced(2, 4)
   lazy val v2Len3From1Until2 = v2Len3.sliced(1, 2)
@@ -66,7 +66,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   lazy val len5And3 = len5And3F(a1Len5, a2Len3)
 
-  lazy val emptyDouble = len0F(Array.empty[Double], 0)
+  lazy val emptyDouble = len0F(Array.empty[Double])
 
   lazy val len5And3Rev = len5And3.reversed
   lazy val a1Len5Rev = v1Len5.reversed
@@ -78,15 +78,14 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   lazy val len5And3Dbl = Factory._doubled(len5And3)
 
-  test("1-array - ctor") {
-    an [IllegalArgumentException] must be thrownBy len3F(a1Len5, 4)
-    an [IllegalArgumentException] must be thrownBy len3F(a1Len5, -1)
+  test("1-array - factory") {
     an [IllegalArgumentException] must be thrownBy Factory[Double](-1)
+    an [IllegalArgumentException] must be thrownBy len3F(null)
   }
 
   test("1-array - size") {
     v2Len3.size must be (3)
-    v1Len5From2.size must be (3)
+    v1Len5From2.size must be (5 - 2)
   }
 
   test("2-array - size") {
@@ -130,7 +129,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     assert(emptyDoubleRev.size === 0)
 
     val aPiDigit0To4 = Array(3, 1, 4, 1, 5)
-    val vPiDigit0To4 = len5F(aPiDigit0To4, 0)
+    val vPiDigit0To4 = len5F(aPiDigit0To4)
     val vPiDigit4To0 = vPiDigit0To4.reversed
     assert(vPiDigit4To0 eq vPiDigit0To4.reversed) // verify cached
     vPiDigit4To0.size must be (5)
@@ -153,8 +152,8 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     v11And44And1(2) must be (1)
     v11And44And1 must be (anInstanceOf[ReversedArray1Slice[_]])
 
-    // verify slice of a slice behaves correctly
-    val v44And1 = v11And44And1.sliced(1, 3)
+    // verify slice of a slice behaves correctly (with implicit until)
+    val v44And1 = v11And44And1.sliced(1)
     v44And1.size must be (3 - 1)
     v44And1(0) must be (44)
     v44And1(1) must be (1)
@@ -393,7 +392,7 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
 
   val len5F = Factory[Int](5)
 
-  lazy val len5 = len5F(a1Len5, 0)
+  lazy val len5 = len5F(a1Len5)
 
   lazy val len5From2Until7 = len5.sliced(2, 7)
 

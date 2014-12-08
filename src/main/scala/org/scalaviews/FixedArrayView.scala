@@ -34,7 +34,7 @@ import scala.virtualization.lms.common._
 trait FixedArrayView[@specialized(Int, Double) T] extends (Int => T) {
   val size: Int
   def reversed: FixedArrayView[T]
-  def sliced(from: Int, until: Int): FixedArrayView[T]
+  def sliced(from: Int, until: Int = size): FixedArrayView[T]
   protected def checkSliceArguments(from: Int, until: Int): Unit = {
     require(0 <= from && from <= until)
   }
@@ -78,14 +78,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
   def apply[T: Manifest](len: Int) = {
     require(len >= 0)
-    (arr: Array[T], offset: Int) => {
+    (arr: Array[T]) => {
       require(arr != null)
-      require(0 <= offset && offset <= len)
-      val a1 = new Array1[T](len, staticData(arr))
-      val a: FixedArrayView[T] =
-        if (offset != 0) a1.sliced(offset, len)
-        else a1
-      a
+      new Array1[T](len, staticData(arr))
     }
   }
 
