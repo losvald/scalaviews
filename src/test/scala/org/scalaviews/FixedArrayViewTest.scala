@@ -521,10 +521,9 @@ val ([^ ]*) = \1\(.*
 
     // verify that "2 + (20 - x)" is optimized to "22 - x"
     // TODO: support such an arithmetic optimization in FixedArrayViewFactory
-    // method.body must not contain allOf ('-', '+')
-    // method.body must not include ("20")
-    // method.body must not include ("2")
-    // method.body must include ("22")
-    // method.body.count(_ == '-') must be (1)
+    method.body must not contain allOf ('-', '+')
+    method.body must not include ("20")
+    method.body must include ("22")
+    method.body.count(_ == '-') must be (1)
   }
 }
