@@ -370,6 +370,25 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3DblFrom3Until7 must not be (anInstanceOf[Array1[_]])
     len5And3DblFrom3Until7 must not be (anInstanceOf[Array2[_]])
   }
+
+  import Implicits._
+
+  test("implicits - from") {
+    a1Len5 from 2 must be (v1Len5From2)
+  }
+
+  test("implicits - until from") {
+    // TODO: should it be the case that: (from 2 until 4) != (until 4 from 2)?
+    a1Len5 until 4 from 2 must be (v1Len5From2Until4)
+  }
+
+  test("implicits - downTo") {
+    a2Len3 downTo 1 must be (v2Len3.sliced(1).reversed)
+  }
+
+  test("implicits - at") {
+    a2Len3 at 1 must be (v2Len3.sliced(1, 2))
+  }
 }
 
 class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers

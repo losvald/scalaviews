@@ -38,6 +38,11 @@ trait FixedArrayView[@specialized(Int, Double) T] extends (Int => T) {
   protected def checkSliceArguments(from: Int, until: Int): Unit = {
     require(0 <= from && from <= until)
   }
+
+  def from(ind: Int) = sliced(ind)
+  def until(ind: Int) = sliced(0, ind)
+  def downTo(ind: Int) = sliced(ind).reversed
+  def at(ind: Int) = sliced(ind, ind + 1)
 }
 
 private[scalaviews]
@@ -239,6 +244,33 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 }
 
 object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
+  def apply[T: Manifest](a: Array[T]): FixedArrayView[T] = {
+    val f = Factory(a.size)
+    f(a)
+  }
+
+  def apply[T: Manifest](a1: Array[T], a2: Array[T]): FixedArrayView[T] = {
+    val f = Factory(a1.size, a2.size)
+    f(a1, a2)
+  }
+
+  trait Implicits {
+    import scala.language.implicitConversions
+
+    implicit def array2FixedArrayView[T: Manifest](a: Array[T]):
+        FixedArrayView[T] =
+      Implicits.arrayCache.get().getOrElseUpdate(a, FixedArrayView(a))
+        .asInstanceOf[FixedArrayView[T]]
+  }
+
+  object Implicits extends Implicits {
+    import scala.collection.mutable.{Map => MutableMap,WeakHashMap}
+
+    private val arrayCache = new ThreadLocal[MutableMap[Array[_], Any]] {
+      override def initialValue = new WeakHashMap[Array[_], Any]
+    }
+  }
+
   private[scalaviews] trait Driver extends ScalaViewExp
       with StaticDataExp with IfThenElseExpOpt
       with ExpOpt.BooleanAnd { self =>
