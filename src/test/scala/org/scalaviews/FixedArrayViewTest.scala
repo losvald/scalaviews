@@ -100,6 +100,15 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     an [IllegalArgumentException] must be thrownBy len3F(null)
   }
 
+  test("N-array - factory") {
+    val v5 = Factory.nested(Array(0), Array(1), Array(2), Array(3), Array(4))
+    val v5Portion1 = v5.sliced(2, 4)
+    v5Portion1 must not be (anInstanceOf[Nested2[_]])
+    v5Portion1 must be (anInstanceOf[Array2Slice[_]])
+    val v5Portion2 = v5.sliced(4, 5)
+    v5Portion2 must be (anInstanceOf[Array1Slice[_]])
+  }
+
   test("1-array - size") {
     v2Len3.size must be (3)
     v1Len5From2.size must be (5 - 2)

@@ -262,12 +262,18 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   }
 
   def nested[T: Manifest](as: Array[T]*): FixedArrayView[T] =
-    nest(as.toIndexedSeq, 0, as.size)
+    nest(as.toIndexedSeq, 0, roundUpToPow2(as.size))
+
+  private def roundUpToPow2(n: Int) = {
+    var p = 1
+    while (p < n) p <<= 1
+    p
+  }
 
   private def nest[T : Manifest](
     as: IndexedSeq[Array[T]], from: Int, until: Int
   ): ViewS[T] = {
-    val size = until - from
+    val size: Int = (if (as.size < until) as.size else until) - from
     (size: @scala.annotation.switch) match {
       case 1 => {
         val f = apply(as(from).size)
@@ -278,7 +284,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(as(from), as(from + 1))
       }
       case _ => {
-        val mid = (from + until + 1) / 2
+        val mid = (from + until) / 2
         new Nested2[T](nest(as, from, mid), nest(as, mid, until))
       }
     }
