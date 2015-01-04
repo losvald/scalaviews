@@ -213,6 +213,26 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
   }
 
+  private[scalaviews] case class Nested2[T: Manifest](
+    v1: ViewS[T],
+    v2: ViewS[T]
+  ) extends ViewS[T] {
+    override val size = v1.size + v2.size
+    override lazy val reversed = // cache it
+      new Nested2[T](v2.reversed, v1.reversed)
+    override def sliced(from: Int, until: Int): ViewS[T] = {
+      checkSliceArguments(from, until)
+      if (from >= v1.size) v2.sliced(from - v1.size, until - v1.size)
+      else if (until <= v1.size) v1.sliced(from, until)
+      else new Nested2[T](v1.from(from), v2.until(until - v1.size))
+    }
+    override private[scalaviews] def applyS(i: Rep[Int]) = {
+      if (v1.size > 0 && i < v1.size) v1.applyS(i)
+      else v2.applyS(i - v1.size)
+    }
+    override private[scalaviews] val t = manifest[T]
+  }
+
   // XXX: this belongs to test code, but we apparently cannot:
   // - mix the staged code (Rep etc.) from here with the one from subclass
   // - use Rep from outside the factory
@@ -240,6 +260,29 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     }
     new Doubled(0, v.size)
   }
+
+  def nested[T: Manifest](as: Array[T]*): FixedArrayView[T] =
+    nest(as.toIndexedSeq, 0, as.size)
+
+  private def nest[T : Manifest](
+    as: IndexedSeq[Array[T]], from: Int, until: Int
+  ): ViewS[T] = {
+    val size = until - from
+    (size: @scala.annotation.switch) match {
+      case 1 => {
+        val f = apply(as(from).size)
+        f(as(from))
+      }
+      case 2 => {
+        val f = apply(as(from).size, as(from + 1).size)
+        f(as(from), as(from + 1))
+      }
+      case _ => {
+        val mid = (from + until + 1) / 2
+        new Nested2[T](nest(as, from, mid), nest(as, mid, until))
+      }
+    }
+  }
 }
 
 object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
@@ -251,6 +294,14 @@ object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
   def apply[T: Manifest](a1: Array[T], a2: Array[T]): FixedArrayView[T] = {
     val f = Factory(a1.size, a2.size)
     f(a1, a2)
+  }
+
+  def apply[T: Manifest](
+    a1: Array[T], a2: Array[T], a3: Array[T],
+    aRest: Array[T]*
+  ): FixedArrayView[T] = {
+    // TODO: optimize for 3 or 4 chunks (avoid ++ and toIndexedSeq overhead)
+    Factory.nested(IndexedSeq(a1, a2, a3) ++ aRest.toIndexedSeq: _*)
   }
 
   trait Implicits {

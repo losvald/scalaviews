@@ -31,9 +31,17 @@ object FixedArrayViewTest {
 
   val a1Len5 = Array.range(0, 50, 10)
   val a2Len3 = Array.range(500, 800, 100)
-  val a1Len9 = Array.range(0, 90, 10)
-  val a1Len2 = Array(0, 10)
-  val a2Len1 = Array(500)
+  // val a1Len9 = Array.range(0, 90, 10)
+  // val a1Len2 = Array(0, 10)
+  // val a2Len1 = Array(500)
+
+  val v4Arrays = Seq(
+    Array(100, 101), Array(102, 103, 104),
+    Array(105, 106, 107, 108), Array(109))
+
+  val v7Arrays = v4Arrays ++ Seq(
+    Array(110, 111, 112), Array(113, 114),
+    Array(115, 116, 117))
 }
 
 class FixedArrayViewTest extends FunSuite with ClassMatchers {
@@ -49,6 +57,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   type ReversedArray1Slice[T] = FixedArrayViewFactory#ReversedArray1Slice[T]
   type ReversedArray2[T] = FixedArrayViewFactory#ReversedArray2[T]
   type ReversedArray2Slice[T] = FixedArrayViewFactory#ReversedArray2Slice[T]
+  type Nested2[T] = FixedArrayViewFactory#Nested2[T]
 
   val len5F = Factory[Int](5)
   val len3F = Factory[Int](3)
@@ -78,6 +87,14 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   lazy val len5And3Dbl = Factory._doubled(len5And3)
 
+  lazy val len5And3And5 = Factory.nested(a1Len5, a2Len3, a1Len5)
+
+  lazy val v4 = Factory.nested(v4Arrays: _*)
+  lazy val v7 = Factory.nested(v7Arrays: _*)
+
+  lazy val v4Rev = v4.reversed
+  lazy val v7Rev = v7.reversed
+
   test("1-array - factory") {
     an [IllegalArgumentException] must be thrownBy Factory[Double](-1)
     an [IllegalArgumentException] must be thrownBy len3F(null)
@@ -94,6 +111,12 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     val len0And0F = Factory[Int](0, 0) // TODO: why I cannot inline this?
     assert(len0And0F(Array.empty, Array.empty).size === 0)
     assert(len0And3F(a1Len5, a1Len5).size === 3)
+  }
+
+  test("N-array - size") {
+    assert(len5And3And5.size === 5 + 3 + 5)
+    assert(v4.size === 10)
+    assert(v7.size === 18)
   }
 
   test("generic - apply", Metatest) {
@@ -122,6 +145,11 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     assert(pi(0) === 3)
     assert(pi(1) === 0.1)
     assert(pi(2) === 0.04)
+  }
+
+  test("N-array - apply (Int)") {
+    for (i <- 0 until 18)
+      assert(v7(i) === 100 + i, "for i=" + i)
   }
 
   test("1-array - reversed") {
@@ -250,6 +278,19 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     // vPiDigit4To0(0) must be (50)
   }
 
+  test("N-array - reversed") {
+    v4Rev must be (anInstanceOf[Nested2[_]])
+    v4Rev(0) must be (109)
+    v4Rev(4) must be (105)
+    v4Rev(9) must be (100)
+    v4Rev.reversed must be (v4) // verify idempotent
+
+    // verify slicing after reversal
+    val v4RevFrom2Until7 = v4Rev.sliced(1, 7)
+    v4RevFrom2Until7(0) must be (108)
+    v4RevFrom2Until7(5) must be (103)
+  }
+
   test("generic - reversed") {
     // Factory is not a stable identifier and FixedArrayViewFactory is a trait,
     // so it seems like we need to extend the factory if we want to use
@@ -270,7 +311,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     assert(len5And3DblRev.reversed eq len5And3Dbl) // verify idempotent
   }
 
-  test("1-array - slice") {
+  test("1-array - sliced") {
     // slice a portion of size 2 from the middle
     v1Len5From2Until4 must be (anInstanceOf[Array1Slice[_]])
     v1Len5From2Until4.size must be (4 - 2)
@@ -362,6 +403,39 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3From5DownTo4.sliced(1, 2)(0) must be (len5And3From4Until6(0))
   }
 
+  test("N-array - sliced") {
+    // verify slicing that results in (a slice of) Array2
+    val v7Portion3And4 = v7.sliced(10, 15)
+    v7Portion3And4 must be (anInstanceOf[Array2Slice[_]])
+    v7Portion3And4(2) must be (112)
+    v7Portion3And4(3) must be (113)
+
+    // verify slicing that results indirectly in (a slice of) Array1
+    val v7Portion0 = v7 until 2
+    v7Portion0 must be (anInstanceOf[Array1Slice[_]])
+
+    // verify slicing that results directly in (a slice of) Array1
+    val v7From16 = v7 from 16
+    v7From16 must be (anInstanceOf[Array1Slice[_]])
+    v7From16(0) must be (116)
+    v7From16(1) must be (117)
+
+    // verify slicing that results in Nested2 at the beginning or in the middle
+    val v7Until10 = v7 until 10
+    v7Until10 must be (anInstanceOf[Nested2[_]])
+    v7Until10 must be (v4.sliced(0, v4.size))
+    val v7From7Until11 = v7.sliced(7, 11)
+    v7From7Until11 must be (anInstanceOf[Nested2[_]])
+    v7From7Until11(0) must be (107)
+    v7From7Until11(2) must be (109)
+    v7From7Until11(3) must be (110)
+
+    // verify further reversal & slicing on a Nested2 slice
+    val v7From9DownTo8 = v7From7Until11.reversed.sliced(1, 3)
+    v7From9DownTo8(0) must be (109)
+    v7From9DownTo8(1) must be (108)
+  }
+
   test("generic - sliced") {
     val len5And3DblFrom3Until7 = len5And3Dbl.sliced(3, 7)
     len5And3DblFrom3Until7.size must be (7 - 3)
@@ -395,7 +469,7 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     with ClassMatchers
     with BeforeAndAfterAll
     with ViewFactoryProvider[FixedArrayViewFactory] {
-  import FixedArrayViewTest.{a1Len5, a2Len3}
+  import FixedArrayViewTest._
   import FixedArrayView.{Factory => _, _} // mock the factory
   def mkFactory = new FixedArrayViewFactory with Driver with CompileMock
 
@@ -430,6 +504,8 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
   lazy val len19And23From18Until21 = len19And23.sliced(18, 21)
   lazy val len19And23From21Until42 = len19And23.sliced(21, 42)
 
+  lazy val v7 = Factory.nested(v7Arrays: _*)
+
   def getApplyC[T](v: FixedArrayView[T]) = v.asInstanceOf[ApplyS[_]].applyC
 
   test("applyC - Array1") {
@@ -458,6 +534,13 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     method.body must fullyMatch regex """val (x[0-9]*).*Array\(500,600,700\).*
 val ([^ ]*) = \1\(.*
 \2"""
+  }
+
+  test("applyC - Nested2") {
+    val method = getApplyC(v7)
+    method.body must include ("< 10")
+    method.body must include ("< 5")
+    method.body must include ("< 2")
   }
 
   test("reversed - Array2") {
