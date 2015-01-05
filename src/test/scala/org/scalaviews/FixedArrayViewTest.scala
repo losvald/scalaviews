@@ -454,6 +454,67 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3DblFrom3Until7 must not be (anInstanceOf[Array2[_]])
   }
 
+  object Nested2Implicits {
+    implicit class Nested2WithSubviews[T: Manifest](v: FixedArrayView[T]) {
+      val _1 = v.asInstanceOf[Nested2[T]].v1
+      val _2 = v.asInstanceOf[Nested2[T]].v2
+    }
+  }
+
+  test("N-array - preorder") {
+    import Nested2Implicits._
+    var exps = List(
+      v7,
+      v7._1,
+      v7._1._1,
+      v7._1._2,
+      v7._2,
+      v7._2._1,
+      v7._2._2).zipWithIndex
+    v7.preorder { act =>
+      val (exp, ord) :: expsRest = exps; exps = expsRest
+      assert(act eq exp, "at visit #" + ord)
+    }
+  }
+
+  test("N-array - inorder") {
+    import Nested2Implicits._
+    assertTraversal(v7.inorder,
+      v7._1._1,
+      v7._1,
+      v7._1._2,
+      v7,
+      v7._2._1,
+      v7._2,
+      v7._2._2)
+  }
+
+  private def assertTraversal[T, V <: FixedArrayView[T]](
+    traverse: (V => Unit) => Unit, exps0: FixedArrayView[T]*) = {
+    import org.scalatest.exceptions.{TestFailedException => TFE}
+    var exps = exps0.toList.zipWithIndex
+    try {
+      traverse { act: V =>
+        exps = exps match {
+          case (exp, ord) :: expsRest =>
+            if (exp ne act)
+              throw new TFE("Unexpected visit #" + ord +
+                ": hashCode %d expected but %d found".format(
+                  exp.hashCode, act.hashCode),
+                0)
+            expsRest
+          case _ => throw new TFE("unexpected end of traversal", 0)
+        }
+      }
+    } catch { // stack depth for TFEs thrown above varies, so catch & wrap them
+      case tfe: TFE => throw new TFE(tfe, 1);
+    }
+    if (exps.nonEmpty)
+      throw new TFE(
+        "unexpected traversal length: " + exps.size + " extra visits",
+        1)
+  }
+
   import Implicits._
 
   test("implicits - from") {

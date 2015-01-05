@@ -30,8 +30,12 @@ private[scalaviews] trait FixedArrayViewLike[T, +This <: FixedArrayView[T]]
   def sliced(from: Int, until: Int = size): This
   def from(ind: Int): This = sliced(ind)
   def until(ind: Int): This = sliced(0, ind)
-  def downTo(ind: Int): FixedArrayView[T] = sliced(ind).reversed
+  def downTo(ind: Int): This = sliced(ind).reversed.asInstanceOf[This]
   def at(ind: Int): This = sliced(ind, ind + 1)
+  protected[scalaviews] def preorder(f: This => Unit): Unit =
+    f(this.asInstanceOf[This])
+  protected[scalaviews] def inorder(f: This => Unit): Unit =
+    f(this.asInstanceOf[This])
 }
 
 trait FixedArrayView[@specialized(Int, Double) T]
@@ -225,6 +229,16 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       if (from >= v1.size) v2.sliced(from - v1.size, until - v1.size)
       else if (until <= v1.size) v1.sliced(from, until)
       else new Nested2[T](v1.from(from), v2.until(until - v1.size))
+    }
+    override protected[scalaviews] def preorder(f: ViewS[T] => Unit): Unit = {
+      f(this)
+      v1.preorder(f)
+      v2.preorder(f)
+    }
+    override protected[scalaviews] def inorder(f: ViewS[T] => Unit): Unit = {
+      v1.inorder(f)
+      f(this)
+      v2.inorder(f)
     }
     override private[scalaviews] def applyS(i: Rep[Int]) = {
       if (v1.size > 0 && i < v1.size) v1.applyS(i)
