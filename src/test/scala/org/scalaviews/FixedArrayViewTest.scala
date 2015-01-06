@@ -515,6 +515,98 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
         1)
   }
 
+  test("N-array - :++") {
+    import Nested2Implicits._
+
+    // verify appending Array1 increases the nesting by 1 level
+    val v4A1 = v4 :++ v2Len3
+    assertTraversal(v4A1.preorder,
+      v4A1,
+      v4, v4._1, v4._2,
+      v2Len3)
+    assertTraversal(v4A1.inorder,
+      v4._1, v4, v4._2,
+      v4A1,
+      v2Len3)
+    v4A1.depth must be (v4.depth + 1)
+
+    // verify appending another Array1 does not increase the nesting level
+    val v4A1A1 = v4A1 :++ v1Len5
+    assertTraversal(v4A1A1.preorder,
+      v4A1A1,
+      v4, v4._1, v4._2,
+      v4A1A1._2, v2Len3, v1Len5)
+    assertTraversal(v4A1A1.inorder,
+      v4._1, v4, v4._2,
+      v4A1A1,
+      v2Len3, v4A1A1._2, v1Len5)
+    v4A1A1.depth must be (v4A1.depth)
+
+    {
+      // verify appending another Array2 increase the nesting level
+      val v4A1A1A2 = v4A1A1 :++ len5And3
+      assertTraversal(v4A1A1A2.preorder,
+        v4A1A1A2,
+        v4A1A1, v4, v4._1, v4._2, v4A1A1._2, v2Len3, v1Len5,
+        len5And3)
+      assertTraversal(v4A1A1A2.inorder,
+        v4._1, v4, v4._2, v4A1A1, v2Len3, v4A1A1._2, v1Len5,
+        v4A1A1A2,
+        len5And3)
+
+      // verify appending nested with 2 leaves does not increase the nesting
+      // and pushes down the last leaf, creating a gap of 1 leaf in between
+      val v4A1A1A2N2 = v4A1A1A2 :++ v4Rev
+      v4A1A1A2N2.depth must be (v4A1A1A2.depth)
+      assertTraversal(v4A1A1A2N2.preorder,
+        v4A1A1A2N2,
+        v4A1A1, v4, v4._1, v4._2, v4A1A1._2, v2Len3, v1Len5,
+        v4A1A1A2N2._2, len5And3, v4Rev, v4Rev._1, v4Rev._2)
+      assertTraversal(v4A1A1A2N2.inorder,
+        v4._1, v4, v4._2, v4A1A1, v2Len3, v4A1A1._2, v1Len5,
+        v4A1A1A2N2,
+        len5And3, v4A1A1A2N2._2, v4Rev._1, v4Rev, v4Rev._2)
+
+      // verify appending another non-nested view is not fooled by the gap
+      val v4A1A1A2N2A1 = v4A1A1A2N2 :++ len5And3From1Until5
+      v4A1A1A2N2A1.depth must be (v4A1A1A2N2.depth + 1)
+
+      // verify only appended "deep enough" views actually increase the nesting
+      (v4A1A1A2N2A1 :++ v4A1A1).depth must be (v4A1A1A2N2A1.depth);
+      (v4A1A1A2N2A1 :++ v4A1A1A2).depth must be (v4A1A1A2N2A1.depth + 1)
+    }
+
+    {
+      // verify appending a nested view with 2 leaves increase the nesting
+      val v4A1A1N2 = v4A1A1 :++ v4Rev
+      assertTraversal(v4A1A1N2.preorder,
+        v4A1A1N2,
+        v4A1A1, v4, v4._1, v4._2, v4A1A1._2, v2Len3, v1Len5,
+        v4Rev, v4Rev._1, v4Rev._2)
+      assertTraversal(v4A1A1N2.inorder,
+        v4._1, v4, v4._2, v4A1A1, v2Len3, v4A1A1._2, v1Len5,
+        v4A1A1N2,
+        v4Rev._1, v4Rev, v4Rev._2)
+
+      // verify appending a non-nested view does not increase the nesting
+      // and pushes down the nested view with 2 leaves, not creating a gap
+      val v4A1A1N2A2 = v4A1A1N2 :++ len5And3
+      v4A1A1N2A2.depth must be (v4A1A1N2.depth)
+      assertTraversal(v4A1A1N2A2.preorder,
+        v4A1A1N2A2,
+        v4A1A1, v4, v4._1, v4._2, v4A1A1._2, v2Len3, v1Len5,
+        v4A1A1N2A2._2, v4Rev, v4Rev._1, v4Rev._2, len5And3)
+      assertTraversal(v4A1A1N2A2.inorder,
+        v4._1, v4, v4._2, v4A1A1, v2Len3, v4A1A1._2, v1Len5,
+        v4A1A1N2A2,
+        v4Rev._1, v4Rev, v4Rev._2, v4A1A1N2A2._2, len5And3)
+
+      // verify only a non-nested view can be appended without increasing depth
+      (v4A1A1N2A2 :++ v1Len5).depth must be (v4A1A1N2A2.depth)
+      (v4A1A1N2A2 :++ v4).depth must be (v4A1A1N2A2.depth + 1)
+    }
+  }
+
   import Implicits._
 
   test("implicits - from") {
