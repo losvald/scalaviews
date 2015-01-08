@@ -41,6 +41,7 @@ private[scalaviews] trait FixedArrayViewLike[T, +This <: FixedArrayView[T]]
 trait FixedArrayView[@specialized(Int, Double) T]
     extends FixedArrayViewLike[T, FixedArrayView[T]] {
   def :++(that: FixedArrayView[T]): FixedArrayView[T]
+  def ++:(that: FixedArrayView[T]): FixedArrayView[T]
   protected[scalaviews] val depth: Int = 0
   protected def checkSliceArguments(from: Int, until: Int): Unit = {
     require(0 <= from && from <= until)
@@ -71,14 +72,31 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
   private[scalaviews] trait ViewS[T] extends FixedArrayView[T] with ApplyS[T]
       with FixedArrayViewLike[T, ViewS[T]] {
-    override def :++(that0: FixedArrayView[T]): FixedArrayView[T] = {
-      val that = that0.asInstanceOf[ViewS[T]]
-      // TODO: do that.prepend(this) if it results in the lesser average depth
-      // or the cast above fails
-      this.append(that)
+    override final def :++(that: FixedArrayView[T]) = that match {
+      case that: ViewS[T] => this :++ that
+      case _ => that ++: this
     }
-    // private[scalaviews] def vFlatLast: ViewS[T] = this
+    override final def ++:(that: FixedArrayView[T]) = that match {
+      case that: ViewS[T] => that ++: this
+      case _ => this :++ that
+    }
+
+    def :++(that: ViewS[T]): ViewS[T] = ViewS.concat(this, that)
+    def ++:(that: ViewS[T]): ViewS[T] = ViewS.concat(that, this)
+
     protected def append(that: ViewS[T]): ViewS[T] = new Nested2[T](this, that)
+    protected def prepend(that: ViewS[T]): ViewS[T] = new Nested2[T](that, this)
+  }
+
+  private[scalaviews] object ViewS {
+    def concat[T](v1: ViewS[T], v2: ViewS[T]): ViewS[T] = {
+      // do v2.prepend(v1) if it results in the lesser average depth
+      val depthDiff = v1.depth - v2.depth
+      if (depthDiff < 0 || (depthDiff == 0 && v1.size < v2.size))
+        v2.prepend(v1)
+      else
+        v1.append(v2)
+    }
   }
 
   private[scalaviews] case class Array1[T: Manifest](
@@ -231,20 +249,14 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class Nested2[T: Manifest](
     v1: ViewS[T],
     v2: ViewS[T],
+    vFlatFirst: ViewS[T],
     vFlatLast: ViewS[T]
-    // override val vFlatLast: ViewS[T]
   ) extends ViewS[T] {
     def this(v1: ViewS[T], v2: ViewS[T]) = this(v1, v2,
+      if (v1.isInstanceOf[Nested2[T]]) v1.asInstanceOf[Nested2[T]].vFlatFirst
+      else v1,
       if (v2.isInstanceOf[Nested2[T]]) v2.asInstanceOf[Nested2[T]].vFlatLast
       else v2)
-    // TODO: The above is more efficient than using the lazy val for vFlatLast,
-    // since we can avoid instance check and cast when we know v2 is Nested2
-    // override protected lazy val vFlatLast: ViewS[T] =
-    //   if (v2.isInstanceOf[Nested2[T]]) v2.asInstanceOf[Nested2[T]].vFlatLast
-    //   else v2
-    // Alternatively, we could have cluttered ViewS / FixedArrayView
-    // by introducing vFlatLast as val/def and overriding it here
-    // override private[scalaviews] val vFlatLast = v2.vFlatLast
 
     override val size = v1.size + v2.size
     override lazy val reversed = // cache it
@@ -273,24 +285,46 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     }
     override private[scalaviews] val t = manifest[T]
 
-    override protected def append(that: ViewS[T]): ViewS[T] = {
-      val thisNew = append(that, this, this.depth)
-      if (thisNew != this) thisNew
-      else super.append(that)
-    }
-    private def append(that: ViewS[T], cur: ViewS[T], maxDepth: Int):
-        ViewS[T] = {
-      if (scala.math.max(cur.depth, that.depth) < maxDepth)
-        new Nested2[T](cur, that)
-      else {
-        if (cur ne vFlatLast) {
-          val curNested = cur.asInstanceOf[Nested2[T]]
-          val v2 = curNested.v2
-          val v2New = append(that, v2, maxDepth - 1)
-          if (v2New ne v2) return new Nested2[T](curNested.v1, v2New)
-        }
-        cur
+    override protected def append(that: ViewS[T]) = {
+      var v1s = scala.List.empty[ViewS[T]]
+      var last: ViewS[T] = null
+      var cur: ViewS[T] = this
+      var maxDepth = cur.depth
+      while (cur ne vFlatLast) {
+        maxDepth -= 1
+        val curNested = cur.asInstanceOf[Nested2[T]]
+        v1s = curNested.v1 :: v1s
+        last = curNested.v2
+        cur = if (scala.math.max(last.depth, that.depth) < maxDepth) {
+          v1s = last :: v1s
+          vFlatLast
+        } else last
       }
+      if (v1s.head ne last)
+        v1s = scala.List(this)
+
+      (that /: v1s)((v2, v1) => new Nested2[T](v1, v2))
+    }
+
+    override protected def prepend(that: ViewS[T]) = {
+      var v2s = scala.List.empty[ViewS[T]]
+      var first: ViewS[T] = null
+      var cur: ViewS[T] = this
+      var maxDepth = cur.depth
+      while (cur ne vFlatFirst) {
+        maxDepth -= 1
+        val curNested = cur.asInstanceOf[Nested2[T]]
+        v2s = curNested.v2 :: v2s
+        first = curNested.v1
+        cur = if (scala.math.max(first.depth, that.depth) < maxDepth) {
+          v2s = first :: v2s
+          vFlatFirst
+        } else first
+      }
+      if (v2s.head ne first)
+        v2s = scala.List(this)
+
+      (that /: v2s)(new Nested2[T](_, _))
     }
   }
 
