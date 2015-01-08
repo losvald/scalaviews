@@ -515,6 +515,38 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
         1)
   }
 
+  test("1-array - :++") {
+    import Nested2Implicits._
+    def verifyAppend(a1: FixedArrayView[Int]): Unit = {
+      val nested2 = a1 :++ len5And3
+      nested2 mustBe a [Nested2[_]]
+      nested2._2 must be theSameInstanceAs len5And3
+      nested2._1 must be theSameInstanceAs a1
+      nested2.depth must be (1)
+    }
+
+    verifyAppend(v1Len5)
+    verifyAppend(a1Len5Rev)
+    verifyAppend(v1Len5From2)
+    verifyAppend(v1Len5From2.reversed)
+  }
+
+  test("2-array - :++") {
+    import Nested2Implicits._
+    def verifyAppend(a2: FixedArrayView[Int]): Unit = {
+      val nested2 = a2 :++ v1Len5
+      nested2 mustBe a [Nested2[_]]
+      nested2._2 must be theSameInstanceAs v1Len5
+      nested2._1 must be theSameInstanceAs a2
+      nested2.depth must be (1)
+    }
+
+    verifyAppend(len5And3)
+    verifyAppend(len5And3Rev)
+    verifyAppend(len5And3From1Until5)
+    verifyAppend(len5And3Rev until 5 from 1)
+  }
+
   test("N-array - :++") {
     import Nested2Implicits._
 
@@ -607,6 +639,38 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
       (v4A1A1N2A2 :++ v1Len5).depth must be (v4A1A1N2A2.depth)
       (v4A1A1N2A2 :++ v4).depth must be (v4A1A1N2A2.depth + 1)
     }
+  }
+
+  test("1-array - ++:") { // TLDR: symmetric to "1-array - :++"
+    import Nested2Implicits._
+    def verifyPrepend(a1: FixedArrayView[Int]): Unit = {
+      val nested2 = len5And3 ++: a1
+      nested2 mustBe a [Nested2[_]]
+      nested2._1 must be theSameInstanceAs len5And3
+      nested2._2 must be theSameInstanceAs a1
+      nested2.depth must be (1)
+    }
+
+    verifyPrepend(v1Len5)
+    verifyPrepend(a1Len5Rev)
+    verifyPrepend(v1Len5From2)
+    verifyPrepend(v1Len5From2.reversed)
+  }
+
+  test("2-array - ++:") { // TLDR: symmetric to "2-array - :++"
+    import Nested2Implicits._
+    def verifyPrepend(a2: FixedArrayView[Int]): Unit = {
+      val nested2 = v1Len5 ++: a2
+      nested2 mustBe a [Nested2[_]]
+      nested2._1 must be theSameInstanceAs v1Len5
+      nested2._2 must be theSameInstanceAs a2
+      nested2.depth must be (1)
+    }
+
+    verifyPrepend(len5And3)
+    verifyPrepend(len5And3Rev)
+    verifyPrepend(len5And3From1Until5)
+    verifyPrepend(len5And3Rev until 5 from 1)
   }
 
   test("N-array - ++:") { // TLDR: symmetric to "N-array - :++"
