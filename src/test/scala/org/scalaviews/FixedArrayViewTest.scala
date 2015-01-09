@@ -61,7 +61,6 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   val len5F = Factory[Int](5)
   val len3F = Factory[Int](3)
-  val len0F = Factory[Double](0)
 
   lazy val v1Len5 = len5F(a1Len5)
   lazy val v1Len5From2 = len5F(a1Len5).sliced(2)
@@ -71,15 +70,11 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   lazy val v2Len3From1Until2 = v2Len3.sliced(1, 2)
 
   val len5And3F = Factory[Int](5, 3)
-  val len0And3F = Factory[Int](0, 3)
 
   lazy val len5And3 = len5And3F(a1Len5, a2Len3)
 
-  lazy val emptyDouble = len0F(Array.empty[Double])
-
   lazy val len5And3Rev = len5And3.reversed
   lazy val a1Len5Rev = v1Len5.reversed
-  lazy val emptyDoubleRev = emptyDouble.reversed
 
   lazy val len5And3From1Until5 = len5And3.sliced(1, 5)
   lazy val len5And3From6Until7 = len5And3.sliced(6, 7)
@@ -95,9 +90,27 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   lazy val v4Rev = v4.reversed
   lazy val v7Rev = v7.reversed
 
+  test("empty") {
+    val empty = Factory.empty
+    empty.size must be (0)
+    empty.depth must be (0)
+    empty.reversed must be theSameInstanceAs empty
+    empty.sliced(0, 0) must be theSameInstanceAs empty
+    empty :++ empty must be theSameInstanceAs empty
+    empty ++: empty must be theSameInstanceAs empty
+  }
+
   test("1-array - factory") {
+    an [IllegalArgumentException] must be thrownBy Factory[Int](0)
     an [IllegalArgumentException] must be thrownBy Factory[Double](-1)
     an [IllegalArgumentException] must be thrownBy len3F(null)
+  }
+
+  test("2-array - factory") {
+    an [IllegalArgumentException] must be thrownBy Factory[Int](0, 4)
+    an [IllegalArgumentException] must be thrownBy Factory[Int](7, 0)
+    an [IllegalArgumentException] must be thrownBy Factory[Int](-3, 2)
+    an [IllegalArgumentException] must be thrownBy Factory[Int](2, -3)
   }
 
   test("N-array - factory") {
@@ -116,10 +129,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   test("2-array - size") {
     assert(len5And3F(a1Len5, a2Len3).size === 8)
-    assert(len0And3F(Array.empty, a2Len3).size === 3)
-    val len0And0F = Factory[Int](0, 0) // TODO: why I cannot inline this?
-    assert(len0And0F(Array.empty, Array.empty).size === 0)
-    assert(len0And3F(a1Len5, a1Len5).size === 3)
+    val len1And1F = Factory[Int](1, 1) // TODO: why I cannot inline this?
   }
 
   test("N-array - size") {
@@ -163,7 +173,6 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   test("1-array - reversed") {
     assert(a1Len5Rev.size === 5)
-    assert(emptyDoubleRev.size === 0)
 
     val aPiDigit0To4 = Array(3, 1, 4, 1, 5)
     val vPiDigit0To4 = len5F(aPiDigit0To4)
@@ -259,34 +268,6 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3From6DownTo6.reversed must be (len5And3From6Until7)
   }
 
-  test("2-array - reversed (first empty)") {
-    val len0And3 = len0And3F(Array.empty, a2Len3)
-    assert(len0And3(0) === 500)
-    assert(len0And3(1) === 600)
-    assert(len0And3(2) === 700)
-
-    val aPiDigit0To4 = Array(3, 1, 4, 1, 5)
-    val vPiDigit0To4F = Factory[Int](aPiDigit0To4.length, 0)
-    val vPiDigit0To4 = vPiDigit0To4F(aPiDigit0To4, Array.empty)
-    val vPiDigit4To0 = vPiDigit0To4.reversed
-    vPiDigit4To0 must not be (anInstanceOf[ReversedArray1[_]])
-    vPiDigit4To0 must be (anInstanceOf[ReversedArray2[_]])
-    vPiDigit4To0.size must be (5)
-    vPiDigit4To0(0) must be (5)
-    vPiDigit4To0(4) must be (3)
-
-    // verify the same instance is returned after 2nd reversal, not a copy
-    val vPiDigit0To4Orig = vPiDigit4To0.reversed
-    assert(vPiDigit0To4Orig eq vPiDigit0To4)
-
-    // verify update to array is seen by the view
-    // TODO: implement setters
-    // vPiDigit0To4(2) = 44
-    // vPiDigit4To0(2) must be (44)
-    // vPiDigit0To4(4) = 50
-    // vPiDigit4To0(0) must be (50)
-  }
-
   test("N-array - reversed") {
     v4Rev must be (anInstanceOf[Nested2[_]])
     v4Rev(0) must be (109)
@@ -321,15 +302,21 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   }
 
   test("1-array - sliced") {
+    // slice an empty portion out of an Array1 and a ReversedArray1
+    v1Len5.sliced(0, 0) must be theSameInstanceAs Factory.empty
+    a1Len5Rev.sliced(0, 0) must be theSameInstanceAs Factory.empty
+
     // slice a portion of size 2 from the middle
     v1Len5From2Until4 must be (anInstanceOf[Array1Slice[_]])
     v1Len5From2Until4.size must be (4 - 2)
     val (fst, snd) = (20, 30)
     v1Len5From2Until4(0) must be (fst)
     v1Len5From2Until4(1) must be (snd)
+    v1Len5From2Until4.sliced(0, 0) must be theSameInstanceAs Factory.empty
     val v1Len5From2Until4Rev = v1Len5From2Until4.reversed
     v1Len5From2Until4Rev must be (anInstanceOf[ReversedArray1Slice[_]])
     assert(v1Len5From2Until4Rev.reversed === v1Len5From2Until4)
+    v1Len5From2Until4Rev.sliced(0, 0) must be theSameInstanceAs Factory.empty
 
     // slice the 1st half and verify it's the same as the 2nd slice of reversed
     val v1Len5From2Until3 = v1Len5From2Until4.sliced(0, 1)
@@ -367,6 +354,10 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   }
 
   test("2-array - sliced") {
+    // slice an empty portion out of an Array1 and a ReversedArray1
+    len5And3.sliced(0, 0) must be theSameInstanceAs Factory.empty
+    len5And3Rev.sliced(0, 0) must be theSameInstanceAs Factory.empty
+
     // verify slicing into 1-array slices
     len5And3From1Until5.size must be (5 - 1)
     for (i <- 1 until 5)
@@ -375,6 +366,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3From6Until7.size must be (7 - 6)
     len5And3From6Until7(0) must be (600)
     len5And3From6Until7 must be (anInstanceOf[Array1Slice[_]])
+    len5And3From6Until7.sliced(0, 0) must be theSameInstanceAs Factory.empty
 
     // verify (slices of) 1-array slice are equal to slices of either array
     len5And3From6Until7(0) must be (v2Len3From1Until2(0))
@@ -391,6 +383,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3From6DownTo6.reversed.sliced(0, 1)(0) must be (600)
     len5And3From6DownTo6.reversed must be (len5And3From6Until7) // verify idem
     // assert(len5And3From6DownTo6.reversed eq (len5And3From6Until7)) // FIXME
+    len5And3From6DownTo6.sliced(0, 0) must be theSameInstanceAs Factory.empty
     val len5And3From4DownTo2 = len5And3From2Until5.reversed
     for (i <- 0 to 2)
       assert(len5And3From4DownTo2(i) === v1Len5From2(2 - i), "for i=" + i)
@@ -529,6 +522,17 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyAppend(a1Len5Rev)
     verifyAppend(v1Len5From2)
     verifyAppend(v1Len5From2.reversed)
+
+    def verifyAppendEmpty(a1: FixedArrayView[Int]): Unit = {
+      val same = a1 :++ Factory.empty
+      same must not be a [Nested2[_]]
+      same must be theSameInstanceAs a1
+    }
+
+    verifyAppendEmpty(v1Len5)
+    verifyAppendEmpty(a1Len5Rev)
+    verifyAppendEmpty(v1Len5From2)
+    verifyAppendEmpty(v1Len5From2.reversed)
   }
 
   test("2-array - :++") {
@@ -545,6 +549,17 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyAppend(len5And3Rev)
     verifyAppend(len5And3From1Until5)
     verifyAppend(len5And3Rev until 5 from 1)
+
+    def verifyAppendEmpty(a2: FixedArrayView[Int]): Unit = {
+      val same = a2 :++ Factory.empty
+      same must not be a [Nested2[_]]
+      same must be theSameInstanceAs a2
+    }
+
+    verifyAppendEmpty(len5And3)
+    verifyAppendEmpty(len5And3Rev)
+    verifyAppendEmpty(len5And3From1Until5)
+    verifyAppendEmpty(len5And3Rev until 5 from 1)
   }
 
   test("N-array - :++") {
@@ -655,6 +670,17 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyPrepend(a1Len5Rev)
     verifyPrepend(v1Len5From2)
     verifyPrepend(v1Len5From2.reversed)
+
+    def verifyPrependEmpty(a2: FixedArrayView[Int]): Unit = {
+      val same = Factory.empty[Int] ++: a2
+      same must not be a [Nested2[_]]
+      same must be theSameInstanceAs a2
+    }
+
+    verifyPrependEmpty(v1Len5)
+    verifyPrependEmpty(a1Len5Rev)
+    verifyPrependEmpty(v1Len5From2)
+    verifyPrependEmpty(v1Len5From2.reversed)
   }
 
   test("2-array - ++:") { // TLDR: symmetric to "2-array - :++"
@@ -671,6 +697,17 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyPrepend(len5And3Rev)
     verifyPrepend(len5And3From1Until5)
     verifyPrepend(len5And3Rev until 5 from 1)
+
+    def verifyPrependEmpty(a2: FixedArrayView[Int]): Unit = {
+      val same = Factory.empty[Int] ++: a2
+      same must not be a [Nested2[_]]
+      same must be theSameInstanceAs a2
+    }
+
+    verifyPrependEmpty(len5And3)
+    verifyPrependEmpty(len5And3Rev)
+    verifyPrependEmpty(len5And3From1Until5)
+    verifyPrependEmpty(len5And3Rev until 5 from 1)
   }
 
   test("N-array - ++:") { // TLDR: symmetric to "N-array - :++"
@@ -865,12 +902,8 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
   lazy val len19And23F = Factory[Int](19, 23)
   lazy val len19And23 = len19And23F(a1Len5, a2Len3)
 
-  lazy val len0And3F = Factory[Int](0, 3)
-  lazy val len0And3 = len0And3F(Array.empty, a2Len3)
-
   lazy val len19And23Dbl = Factory._doubled(len19And23)
 
-  lazy val len0And3Rev = len0And3.reversed
   lazy val len19And23Rev = len19And23.reversed
 
   lazy val len19And23From13Until18 = len19And23.sliced(13, 18)
@@ -897,18 +930,6 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     method.body must not include ("&&")
   }
 
-  test("applyC - Array2 (first empty)") {
-    // verify the branching and boolean and is optimized away, since
-    val method = getApplyC(len0And3)
-    method.body must not include ("- 0")
-    method.body must not include ("&&")
-    method.body must not include ("<")
-    method.body must not include ("if")
-    method.body must fullyMatch regex """val (x[0-9]*).*Array\(500,600,700\).*
-val ([^ ]*) = \1\(.*
-\2"""
-  }
-
   test("applyC - Nested2") {
     val method = getApplyC(v7)
     method.body must include ("< 10")
@@ -919,13 +940,6 @@ val ([^ ]*) = \1\(.*
   test("reversed - Array2") {
     val method = getApplyC(len19And23Rev)
     method.body must startWith regex "val .* = 41 - .*"
-  }
-
-  test("reversed - Array2 (first empty)") {
-    val method = getApplyC(len0And3Rev)
-    method.body must include ("2 -")
-    method.body must not include ("if")
-    method.body.count(_ == '\n') must be (3)
   }
 
   test("reversed - generic") {

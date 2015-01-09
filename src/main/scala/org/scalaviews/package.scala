@@ -24,6 +24,10 @@ package org
 import scala.virtualization.lms.common._
 
 package object scalaviews {
+  trait View {
+    def size: Int
+  }
+
   trait ViewFactory extends Compile {
     // this allows us to call Expressions's reset after it is mixed in
     private[scalaviews] def reset
