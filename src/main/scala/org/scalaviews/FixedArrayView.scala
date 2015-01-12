@@ -24,7 +24,7 @@ package org.scalaviews
 import scala.virtualization.lms.common._
 
 private[scalaviews] trait FixedArrayViewLike[T, +This <: FixedArrayView[T]]
-    extends View with (Int => T) {
+    extends View[T] with (Int => T) {
   override val size: Int
   def reversed: This
   def sliced(from: Int, until: Int = size): This
@@ -42,6 +42,15 @@ trait FixedArrayView[@specialized(Int, Double) T]
     extends FixedArrayViewLike[T, FixedArrayView[T]] {
   def :++(that: FixedArrayView[T]): FixedArrayView[T]
   def ++:(that: FixedArrayView[T]): FixedArrayView[T]
+  override def iterator = new Iterator[T] {
+    private var ind = 0
+    override def next = {
+      val ret = FixedArrayView.this.apply(ind)
+      ind += 1
+      ret
+    }
+    override def hasNext = ind != FixedArrayView.this.size
+  }
   protected[scalaviews] val depth: Int = 0
   protected def checkSliceSize(from: Int, until: Int): Boolean = {
     val sliceSize = until - from
@@ -114,6 +123,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     final override def at(ind: Int) = this
     final override def :++(that: ViewS[Any]) = that
     final override def ++:(that: ViewS[Any]) = that
+    final override def iterator = Nil.iterator // fast & avoids object creation
     final override protected[scalaviews] def preorder(
       f: ViewS[Any] => Unit): Unit = { }
     final override protected[scalaviews] def inorder(

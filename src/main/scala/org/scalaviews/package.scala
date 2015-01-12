@@ -24,8 +24,9 @@ package org
 import scala.virtualization.lms.common._
 
 package object scalaviews {
-  trait View {
+  trait View[+T] {
     def size: Int
+    def iterator: Iterator[T]
   }
 
   trait ViewFactory extends Compile {

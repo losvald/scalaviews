@@ -98,6 +98,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     empty.sliced(0, 0) must be theSameInstanceAs empty
     empty :++ empty must be theSameInstanceAs empty
     empty ++: empty must be theSameInstanceAs empty
+    empty.iterator.hasNext must be (false)
   }
 
   test("1-array - factory") {
@@ -853,6 +854,58 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
       v4._1, v4, v4._2,
       v4A1A1,
       v2Len3, v4A1A1._2, v1Len5)
+  }
+
+  test("1-array - iterator") {
+    v1Len5.iterator.toList must contain theSameElementsInOrderAs a1Len5.toList
+    a1Len5Rev.iterator.toList must contain theSameElementsInOrderAs (
+      a1Len5.toList.reverse)
+    v1Len5From2.iterator.toList must contain theSameElementsInOrderAs (
+      a1Len5.toList.drop(2))
+    v1Len5From2.reversed.iterator.toList must contain theSameElementsInOrderAs (
+      a1Len5.toList.drop(2).reverse)
+  }
+
+  test("2-array - iterator") {
+    val len5And3List = a1Len5.toList ::: a2Len3.toList
+    len5And3.iterator.toList must contain theSameElementsInOrderAs len5And3List
+    len5And3Rev.iterator.toList must contain theSameElementsInOrderAs (
+      len5And3List.reverse)
+    val len5And3From1Until5List = len5And3List.slice(1, 5)
+    len5And3From1Until5.iterator.toList must contain theSameElementsInOrderAs (
+      len5And3From1Until5List)
+    (len5And3From1Until5.reversed.iterator.toList must contain
+      theSameElementsInOrderAs len5And3From1Until5List.reverse)
+  }
+
+  test("N-array - iterator (depth 1)") {
+    val vDepth1 = v4
+    assume(vDepth1.depth === 1)
+    vDepth1.iterator.toArray must contain theSameElementsInOrderAs (
+      (Array.empty[Int] /: v4Arrays)(_ ++ _))
+  }
+
+  test("N-array - iterator (depth 2)") {
+    val vDepth2 = v7
+    assume(vDepth2.depth === 2)
+    vDepth2.iterator.toArray must contain theSameElementsInOrderAs (
+      (Array.empty[Int] /: v7Arrays)(_ ++ _))
+  }
+
+  test("N-array - iterator (unbalanced)") {
+    import Nested2Implicits._
+    val v = v2Len3 ++: (v4 :++ v1Len5)
+    assume(v.depth === 3)
+    assume(v._1.depth === 0)
+    assume(v._2.depth === 2)
+    assume(v._2._1.depth === 1)
+    assume(v._2._2.depth === 0)
+    assume(v._2.depth - v._1.depth === 2)
+    assume(v._2._1.depth - v._2._2.depth === 1)
+    // TODO: Why using toArray gives ambiguous implicit conversion error?
+    v.iterator.toList must contain theSameElementsInOrderAs (
+      a2Len3.toList ++ (List.empty[Int] /: v4Arrays)(_ ++ _.toList) ++
+        a1Len5.toList)
   }
 
   import Implicits._
