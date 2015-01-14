@@ -305,6 +305,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       else if (until <= v1.size) v1.sliced(from, until)
       else new Nested2[T](v1.from(from), v2.until(until - v1.size))
     }
+    override def iterator: scala.Iterator[T] = new Nested2.Iter[T](this)
+
     override protected[scalaviews] val depth =
       1 + scala.math.max(v1.depth, v2.depth)
     override protected[scalaviews] def preorder(f: ViewS[T] => Unit): Unit = {
@@ -363,6 +365,54 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         v2s = scala.List(this)
 
       (that /: v2s)(new Nested2[T](_, _))
+    }
+  }
+
+  private object Nested2 {
+    // declare Iter outside the case class to avoid the implicit this reference
+    // (the ctor argument v is not used outside ctor, so no overhead)
+    private class Iter[T](v: Nested2[T]) extends scala.Iterator[T] {
+      // FIXME: lms framework breaks if a "var" field is reassigned in a block
+      // var x = 3
+      // def changeX(): Unit = {
+      //   x = 42 // ok
+      //   if (true) { setX(666) } // ok
+      //   // if (true) { x = 666 } // bad
+      //   // for (i <- 0 to 2) x = i // bad
+      // }
+      // def setX(x: Int) { this.x = x }
+      // // def x_(x: Int) { this.x = x } // an explicit setter doesn't help
+      // As a workaround, we create helper methods:
+      def setStack(value: scala.List[Nested2[T]]) { this.stack = value }
+      def setFlatIter(value: scala.Iterator[T]) { this.flatIter = value }
+
+      // TODO: perhaps move descend to companion object and make it pure, then:
+      // var (stack, flatIter) = descend(v, scala.Nil)
+      var flatIter: scala.Iterator[T] = null
+      var stack: scala.List[Nested2[T]] = scala.Nil
+      descend(v)
+
+      override def hasNext = stack != scala.Nil || flatIter.hasNext
+      override def next(): T = {
+        if (!flatIter.hasNext) {
+          val inorderPred = stack.head; setStack(stack.tail) // pop from stack
+          inorderPred.v2 match {
+            case v2: Nested2[T] => descend(v2)
+            case _ => setFlatIter(inorderPred.v2.iterator)
+          }
+        }
+        flatIter.next()
+      }
+      private def descend(cur: Nested2[T]): Unit = {
+        val vLeftmost = cur.vFlatFirst
+        var v: ViewS[T] = cur
+        do {
+          val vNested = v.asInstanceOf[Nested2[T]]
+          stack = vNested :: stack
+          v = vNested.v1
+        } while (v != vLeftmost);
+        flatIter = v.iterator
+      }
     }
   }
 
