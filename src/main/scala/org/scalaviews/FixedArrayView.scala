@@ -382,37 +382,33 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       // }
       // def setX(x: Int) { this.x = x }
       // // def x_(x: Int) { this.x = x } // an explicit setter doesn't help
-      // As a workaround, we create helper methods:
-      def setStack(value: scala.List[Nested2[T]]) { this.stack = value }
-      def setFlatIter(value: scala.Iterator[T]) { this.flatIter = value }
 
-      // TODO: perhaps move descend to companion object and make it pure, then:
-      // var (stack, flatIter) = descend(v, scala.Nil)
-      var flatIter: scala.Iterator[T] = null
-      var stack: scala.List[Nested2[T]] = scala.Nil
-      descend(v)
+      var (stack, flatIter) = descend(v, scala.Nil)
 
       override def hasNext = stack != scala.Nil || flatIter.hasNext
       override def next(): T = {
-        if (!flatIter.hasNext) {
-          val inorderPred = stack.head; setStack(stack.tail) // pop from stack
+        val (stackNext, flatIterNext) = if (!flatIter.hasNext) {
+          val inorderPred :: stackNext = stack // pop from stack
           inorderPred.v2 match {
-            case v2: Nested2[T] => descend(v2)
-            case _ => setFlatIter(inorderPred.v2.iterator)
+            case v2: Nested2[T] => descend(v2, stackNext)
+            case _ => (stackNext, inorderPred.v2.iterator)
           }
-        }
+        } else (stack, flatIter)
+        stack = stackNext; flatIter = flatIterNext
         flatIter.next()
       }
-      private def descend(cur: Nested2[T]): Unit = {
-        val vLeftmost = cur.vFlatFirst
-        var v: ViewS[T] = cur
-        do {
-          val vNested = v.asInstanceOf[Nested2[T]]
-          stack = vNested :: stack
-          v = vNested.v1
-        } while (v != vLeftmost);
-        flatIter = v.iterator
-      }
+    }
+
+    private def descend[T](cur: Nested2[T], stack0: scala.List[Nested2[T]]) = {
+      var stack = stack0
+      val vLeftmost = cur.vFlatFirst
+      var v: ViewS[T] = cur
+      do {
+        val vNested = v.asInstanceOf[Nested2[T]]
+        stack = vNested :: stack
+        v = vNested.v1
+      } while (v != vLeftmost);
+      (stack, v.iterator)
     }
   }
 
