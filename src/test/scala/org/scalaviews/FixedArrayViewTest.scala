@@ -908,6 +908,49 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
         a1Len5.toList)
   }
 
+  private def foreachList[T](v: FixedArrayView[T]) = {
+    val data = scala.collection.mutable.MutableList.empty[T]
+    v.foreach { datum => data += datum }
+    data.toList
+  }
+
+  test("1-array - foreach") {
+    foreachList(v1Len5) must contain theSameElementsInOrderAs a1Len5.toList
+    foreachList(a1Len5Rev) must contain theSameElementsInOrderAs (
+      a1Len5.toList.reverse)
+    foreachList(v1Len5From2) must contain theSameElementsInOrderAs (
+      a1Len5.toList.drop(2))
+    foreachList(v1Len5From2.reversed) must contain theSameElementsInOrderAs (
+      a1Len5.toList.drop(2).reverse)
+  }
+
+  test("2-array - foreach") {
+    val len5And3List = a1Len5.toList ::: a2Len3.toList
+    foreachList(len5And3) must contain theSameElementsInOrderAs len5And3List
+    foreachList(len5And3Rev) must contain theSameElementsInOrderAs (
+      len5And3List.reverse)
+    val len5And3From1Until5List = len5And3List.slice(1, 5)
+    foreachList(len5And3From1Until5) must contain theSameElementsInOrderAs (
+      len5And3From1Until5List)
+    (foreachList(len5And3From1Until5.reversed) must contain
+      theSameElementsInOrderAs len5And3From1Until5List.reverse)
+  }
+
+  test("N-array - foreach (unbalanced)") {
+    import Nested2Implicits._
+    val v = v2Len3 ++: (v4 :++ v1Len5)
+    assume(v.depth === 3)
+    assume(v._1.depth === 0)
+    assume(v._2.depth === 2)
+    assume(v._2._1.depth === 1)
+    assume(v._2._2.depth === 0)
+    assume(v._2.depth - v._1.depth === 2)
+    assume(v._2._1.depth - v._2._2.depth === 1)
+    foreachList(v) must contain theSameElementsInOrderAs (
+      a2Len3.toList ++ (List.empty[Int] /: v4Arrays)(_ ++ _.toList) ++
+        a1Len5.toList)
+  }
+
   import Implicits._
 
   test("implicits - from") {

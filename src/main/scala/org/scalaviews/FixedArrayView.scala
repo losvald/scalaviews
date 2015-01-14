@@ -42,6 +42,11 @@ trait FixedArrayView[@specialized(Int, Double) T]
     extends FixedArrayViewLike[T, FixedArrayView[T]] {
   def :++(that: FixedArrayView[T]): FixedArrayView[T]
   def ++:(that: FixedArrayView[T]): FixedArrayView[T]
+  override def foreach(f: T => Unit): Unit = {
+    val iter = iterator
+    while (iter.hasNext)
+      f(iter.next())
+  }
   override def iterator = new Iterator[T] {
     private var ind = 0
     override def next = {

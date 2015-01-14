@@ -26,6 +26,7 @@ import scala.virtualization.lms.common._
 package object scalaviews {
   trait View[+T] {
     def size: Int
+    def foreach(f: T => Unit): Unit
     def iterator: Iterator[T]
   }
 
