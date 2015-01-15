@@ -929,11 +929,11 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     foreachList(len5And3) must contain theSameElementsInOrderAs len5And3List
     foreachList(len5And3Rev) must contain theSameElementsInOrderAs (
       len5And3List.reverse)
-    val len5And3From1Until5List = len5And3List.slice(1, 5)
-    foreachList(len5And3From1Until5) must contain theSameElementsInOrderAs (
-      len5And3From1Until5List)
-    (foreachList(len5And3From1Until5.reversed) must contain
-      theSameElementsInOrderAs len5And3From1Until5List.reverse)
+    val len5And3From4Until6List = len5And3List.slice(4, 6)
+    foreachList(len5And3From4Until6) must contain theSameElementsInOrderAs (
+      len5And3From4Until6List)
+    (foreachList(len5And3From4Until6.reversed) must contain
+      theSameElementsInOrderAs len5And3From4Until6List.reverse)
   }
 
   test("N-array - foreach (unbalanced)") {
@@ -990,10 +990,12 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
   import scala.reflect.runtime.universe._
 
   val len5F = Factory[Int](5)
+  val len3F = Factory[Int](3)
 
   lazy val len5 = len5F(a1Len5)
+  lazy val len3 = len3F(a2Len3)
 
-  lazy val len5From2Until7 = len5.sliced(2, 7)
+  lazy val len5From2Until4 = len5.sliced(2, 4)
 
   lazy val len19And23F = Factory[Int](19, 23)
   lazy val len19And23 = len19And23F(a1Len5, a2Len3)
@@ -1045,7 +1047,7 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
   }
 
   test("sliced - Array1") {
-    val method = getApplyC(len5From2Until7)
+    val method = getApplyC(len5From2Until4)
     method.body.count(_ == '+') must be (1)
     method.body must include ("2")
     method.body must not include ("if")
@@ -1091,5 +1093,38 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     method.body must not include ("20")
     method.body must include ("22")
     method.body.count(_ == '-') must be (1)
+  }
+
+  def getForeachC[T](v: FixedArrayView[T]) =
+    v.asInstanceOf[FixedArrayViewFactory#ForeachS[T]].foreachC
+
+  def mkForeachCUnrolledRegex[T](size: Int, arrayElems: T*) =
+    (""".* Array\(""" + arrayElems.mkString(",") + """\).*""" + """
+val .* = x\d+\((\d+)\)
+val x\d+ = x\d+\(x\d+\)""" * size + """
+\(\)""")
+
+  test("foreach - Array1 (unrolled)") {
+    val method = getForeachC(len3)
+    method.body must fullyMatch regex (
+      mkForeachCUnrolledRegex(3, 500, 600, 700) withGroups ("0", "1", "2"))
+  }
+
+  test("foreach - ReversedArray1 (unrolled)") {
+    val method = getForeachC(len3.reversed)
+    method.body must fullyMatch regex (
+      mkForeachCUnrolledRegex(3, 500, 600, 700) withGroups ("2", "1", "0"))
+  }
+
+  test("foreach - Array1Slice (unrolled)") {
+    val method = getForeachC(len5From2Until4)
+    method.body must fullyMatch regex (
+      mkForeachCUnrolledRegex(2, 0, 10, 20, 30, 40) withGroups ("2", "3"))
+  }
+
+  test("foreach - ReversedArray1Slice (unrolled)") {
+    val method = getForeachC(len5From2Until4.reversed)
+    method.body must fullyMatch regex (
+      mkForeachCUnrolledRegex(2, 0, 10, 20, 30, 40) withGroups ("3", "2"))
   }
 }
