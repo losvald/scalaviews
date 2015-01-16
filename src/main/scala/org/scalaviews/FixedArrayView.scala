@@ -95,8 +95,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] implicit val t: Manifest[T]
   }
 
-  private[scalaviews] trait ViewS[T] extends FixedArrayView[T] with ApplyS[T]
-      with FixedArrayViewLike[T, ViewS[T]] {
+  private[scalaviews] trait ViewS[T] extends FixedArrayView[T]
+      with FixedArrayViewLike[T, ViewS[T]]
+      with ApplyS[T] with ForeachS[T] {
     override final def :++(that: FixedArrayView[T]) = that match {
       case that: ViewS[T] => if (that.size > 0) this :++ that else this
       case _ => that ++: this // non-ViewS might have dynamic size, so no check
@@ -146,6 +147,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
     // staged methods will not be called, so they can return anything
     final override private[scalaviews] def applyS(i: Rep[Int]) = 0
+    final override private[scalaviews] def foreachS(f: Rep[Any => Unit]):
+        Rep[Unit] = {}
     final override private[scalaviews] val t = manifest[Any]
   }
 
@@ -163,7 +166,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class Array1[T: Manifest](
     override val size: Int,
     a: Rep[Array[T]]
-  ) extends ViewS[T] with ForeachS[T] {
+  ) extends ViewS[T] {
     override lazy val reversed = new ReversedArray1(this) // cache it
     override def sliced(from: Int, until: Int) = {
       if (!checkSliceSize(from, until)) empty
@@ -190,7 +193,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class Array1Slice[T: Manifest](
     a: Array1[T],
     from: Int, until: Int
-  ) extends ViewS[T] with ForeachS[T] {
+  ) extends ViewS[T] {
     override val size = until - from
     override lazy val reversed = // call ctor directly to avoid check & cache it
       new ReversedArray1Slice(a.reversed, a.size - until, a.size - from)
@@ -224,6 +227,13 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       if (i < len1) a1(i)
       else a2(i - len1)
     }
+    override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
+      import scala.language.reflectiveCalls // needed for unrollForArray
+      for (i <- unrollForArray(0 until len1))
+        f(a1(i))
+      for (i <- unrollForArray(len1 until size))
+        f(a2(i - len1))
+    }
     override private[scalaviews] val t = manifest[T]
   }
 
@@ -246,6 +256,13 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       a.sliced(this.from + from, this.from + until)
     override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
       a.applyS(from + i)
+    override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
+      import scala.language.reflectiveCalls // needed for unrollForArray
+      for (i <- unrollForArray(from until a.len1))
+        f(a.a1(i))
+      for (i <- unrollForArray(a.len1 until until))
+        f(a.a2(i - a.len1))
+    }
     override private[scalaviews] val t = manifest[T]
   }
 
@@ -258,7 +275,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
   private[scalaviews] case class ReversedArray1[T: Manifest](
     private[scalaviews] val rev: Array1[T]
-  ) extends ViewS[T] with ReversedApplyS[T] with ForeachS[T] {
+  ) extends ViewS[T] with ReversedApplyS[T] {
     override val size = rev.size
     override val reversed = rev
     override def sliced(from: Int, until: Int) = {
@@ -281,7 +298,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class ReversedArray1Slice[T: Manifest](
     a: ReversedArray1[T],
     from: Int, until: Int
-  ) extends ViewS[T] with ForeachS[T] {
+  ) extends ViewS[T] {
     override val size = until - from
     override lazy val reversed = // call ctor directly to avoid check & cache it
       new Array1Slice(a.reversed, a.size - until, a.size - from)
@@ -307,11 +324,16 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       // TODO: consider optimizing by storing Array1 portions inside Array2?
       if (!checkSliceSize(from, until)) empty
       else if (from >= len2)
-        new Array1[T](size - len2, rev.a1).reversed.sliced(
+        new Array1[T](rev.len1, rev.a1).reversed.sliced(
           from - len2, until - len2)
       else if (until <= len2)
         new Array1[T](len2, rev.a2).reversed.sliced(from, until)
       else new ReversedArray2Slice[T](this, from, until)
+    }
+    override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
+      import scala.language.reflectiveCalls // needed for unrollForArray
+      for (i <- unrollForArray(-(size - 1) until 1)) // XXX: hack to avoid bug
+        f(rev.applyS(-1 * i)) // XXX: unary minus not supported, so use * -1
     }
     override private[scalaviews] val t = manifest[T]
   }
@@ -328,6 +350,13 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       a.sliced(this.from + from, this.from + until)
     override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
       a.applyS(from + i)
+    override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
+      import scala.language.reflectiveCalls // needed for unrollForArray
+      for (i <- unrollForArray(-(a.size - 1 - from) until 1 - (a.rev.len1)))
+        f(a.rev.a2(-1 * i - a.rev.len1))
+      for (i <- unrollForArray(1 - (a.rev.len1) until 1 - (a.size - until)))
+        f(a.rev.a1(-1 * i)) // XXX: circumvent bugs with step<0 and unary -
+    }
     override private[scalaviews] val t = manifest[T]
   }
 
@@ -369,6 +398,11 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] def applyS(i: Rep[Int]) = {
       if (i < v1.size) v1.applyS(i)
       else v2.applyS(i - v1.size)
+    }
+    override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
+      import scala.language.reflectiveCalls // needed for unrollForArray
+      v1.foreachS(f);
+      v2.foreachS(f);
     }
     override private[scalaviews] val t = manifest[T]
 
@@ -469,13 +503,17 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] def _doubled[T: Manifest](v0: FixedArrayView[T])(
     implicit n: Numeric[T]
   ): FixedArrayView[T] = {
-    val v = v0.asInstanceOf[FixedArrayView[T] with ApplyS[T]]
+    val v = v0.asInstanceOf[FixedArrayView[T] with ViewS[T]]
     class Doubled(from: Int, until: Int) extends ViewS[T] {
       override val size = until - from
+      import n.mkNumericOps // needed in applyS and foreachS
       override private[scalaviews] def applyS(i0: Rep[Int]) = {
-        import n.mkNumericOps
         val i = from + i0
         v.applyS(i) + v.applyS(i)
+      }
+      override private[scalaviews] def foreachS(f: Rep[T => Unit]):
+          Rep[Unit] = {
+        v.sliced(from, until).foreachS((x: Rep[T]) => f(x + x))
       }
       override lazy val reversed: Doubled = new Doubled(from, until)
           with ReversedApplyS[T] {

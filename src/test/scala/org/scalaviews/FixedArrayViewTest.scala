@@ -991,6 +991,7 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
 
   val len5F = Factory[Int](5)
   val len3F = Factory[Int](3)
+  val len1F = Factory[Int](1)
 
   lazy val len5 = len5F(a1Len5)
   lazy val len3 = len3F(a2Len3)
@@ -1098,11 +1099,16 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
   def getForeachC[T](v: FixedArrayView[T]) =
     v.asInstanceOf[FixedArrayViewFactory#ForeachS[T]].foreachC
 
-  def mkForeachCUnrolledRegex[T](size: Int, arrayElems: T*) =
-    (""".* Array\(""" + arrayElems.mkString(",") + """\).*""" + """
+  val foreachCBodyEnd = """
+\(\)"""
+
+  private def mkForeachCUnrolledRegex0[T](sizeElems: (Int, Seq[T])) =
+    (""".* Array\(""" + sizeElems._2.mkString(",") + """\).*""" + """
 val .* = x\d+\((\d+)\)
-val x\d+ = x\d+\(x\d+\)""" * size + """
-\(\)""")
+val x\d+ = x\d+\(x\d+\)""" * sizeElems._1)
+
+  def mkForeachCUnrolledRegex[T](size: Int, arrayElems: T*) =
+    mkForeachCUnrolledRegex0((size, arrayElems)) + foreachCBodyEnd
 
   test("foreach - Array1 (unrolled)") {
     val method = getForeachC(len3)
@@ -1126,5 +1132,44 @@ val x\d+ = x\d+\(x\d+\)""" * size + """
     val method = getForeachC(len5From2Until4.reversed)
     method.body must fullyMatch regex (
       mkForeachCUnrolledRegex(2, 0, 10, 20, 30, 40) withGroups ("3", "2"))
+  }
+
+  def mkForeachCUnrolledRegex[T](sizeElems: (Int, Seq[T])*) =
+    (sizeElems map mkForeachCUnrolledRegex0 mkString "\n") + foreachCBodyEnd
+
+  test("foreach - Array2Slice (unrolled)") {
+    val method = getForeachC(len19And23From18Until21)
+    method.body must fullyMatch regex (
+      mkForeachCUnrolledRegex(
+        (1, a1Len5.toSeq),
+        (2, a2Len3.toSeq)
+      ) withGroups (
+        "18",
+        "0", "1"))
+  }
+
+  test("foreach - ReversedArray2Slice (unrolled)") {
+    val method = getForeachC(len19And23From18Until21.reversed)
+    method.body must fullyMatch regex (
+      mkForeachCUnrolledRegex(
+        (2, a2Len3.toSeq),
+        (1, a1Len5.toSeq)
+      ) withGroups (
+        "1", "0",
+        "18"))
+  }
+
+  test("foreach - Nested2 (unrolled)") {
+    val v = len5.sliced(3, 4) :++ len1F(Array(400)) :++ len1F(Array(5000))
+    val method = getForeachC(v)
+    method.body must fullyMatch regex (
+      mkForeachCUnrolledRegex(
+        (1, a1Len5.toSeq),
+        (1, Seq(400)),
+        (1, Seq(5000))
+      ) withGroups (
+        "3",
+        "0",
+        "0"))
   }
 }
