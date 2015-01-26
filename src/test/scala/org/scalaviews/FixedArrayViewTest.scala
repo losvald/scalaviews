@@ -1172,4 +1172,25 @@ val x\d+ = x\d+\(x\d+\)""" * sizeElems._1)
         "0",
         "0"))
   }
+
+  def getIteratorS[T](v: FixedArrayView[T]) =
+    v.asInstanceOf[FixedArrayViewFactory#IteratorS[T]].iterator
+
+  test("iterator - Array1 (unrolled)") {
+    val it = getIteratorS(len5)
+    def printInds() {
+      println(it.localInd)// + " " + it.chunkInd)
+    }
+    printInds()
+    println(it.nextC.body)
+    printInds()
+    it.next()
+    printInds()
+    println(it.nextC.body)
+    printInds()
+    // import java.io.{ByteArrayOutputStream, PrintWriter}
+    // val baos = new ByteArrayOutputStream
+    // FixedArrayView.Factory.asInstanceOf[CompileScala].codegen.emitSource(
+    //   len5.iterator, "IteratorSnippet", new PrintWriter(baos))
+  }
 }

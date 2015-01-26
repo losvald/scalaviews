@@ -71,6 +71,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     with IfThenElse
     with NumericOps with PrimitiveOps with BooleanOps
     with Functions
+    // with LiftVariables
     // with RangeOps with SeqOps with While with Variables
     // with Equal
     // with RangeOps with OrderingOps with MiscOps with ArrayOps with StringOps
@@ -95,6 +96,48 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] implicit val t: Manifest[T]
   }
 
+  private[scalaviews] trait IteratorS[T] { this: FixedArrayView[T] =>
+    private[scalaviews] val chunkSizes: Array[Int] =
+      scala.Array(1) //computeChunkSizes
+    override final def iterator = new Iter
+    // make Iter a non-anonymous class so that test code can inspect it
+    private[scalaviews] class Iter extends Iterator[T] {
+      // slot 0 holds chunkInd, slot 1 holds localInd
+      private val state = new Array[Int](2)
+      private[scalaviews] def chunkInd: Rep[Int] = staticData(state).apply(0)
+      private def chunkInd_=(x: Rep[Int]) = staticData(state).update(0, x)
+      private[scalaviews] def localInd: Rep[Int] = staticData(state).apply(1)
+      private def localInd_=(x: Rep[Int]) = staticData(state).update(1, x)
+
+      // def setChunkInd(x: Rep[Int]) = staticData(this.state).update(0, x)
+      def setChunkInd(x: Rep[Int]) = array_update(staticData(this.state), 0, x)
+
+      override final def next(): T = nextC()
+      override final val hasNext = false
+      // override final val hasNext = hasNextC()
+      private[scalaviews] final lazy val nextC = compile(nextS)
+      private[scalaviews] def nextS(u: Rep[Unit]): Rep[T] = {
+        val ret = chunk(chunkInd)(localInd) // TODO: should be O(1)
+        localInd += 1
+        // localInd_=(0)
+        if (localInd == chunkSizes(chunkInd)) {
+          // chunkInd += 1
+          // chunkInd_=(chunkInd + 1)
+          setChunkInd(chunkInd + 1)
+          // localInd = 0
+          // localInd_=(0) // workaround for: localInd = 0
+        }
+        ret
+      }
+      // private[scalaviews] val hasNextC = compile(hasNextS) // TODO: needed?
+      // private[scalaviews] def hasNextS(u: Rep[Unit]): Rep[Boolean] =
+      //   chunkInd < chunkSizes.size // || locInd < chunkSizes(chunkInd)
+    }
+    private[scalaviews] implicit val t: Manifest[T]
+    protected def computeChunkSizes: Array[Int]
+    protected def chunk(i: Rep[Int]): Rep[Array[T]]
+  }
+
   private[scalaviews] trait ViewS[T] extends FixedArrayView[T]
       with FixedArrayViewLike[T, ViewS[T]]
       with ApplyS[T] with ForeachS[T] {
@@ -109,6 +152,10 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
     def :++(that: ViewS[T]): ViewS[T] = ViewS.concat(this, that)
     def ++:(that: ViewS[T]): ViewS[T] = ViewS.concat(that, this)
+
+    // private[scalaviews] def chunkSize(i: Int): Int = chunkSizeC(i)
+    // private[scalaviews] final lazy val chunkSizeC = compile(chunkSizeS)
+    // private[scalaviews] def chunkSizeS(i: Int): Rep[Int] = 0
 
     protected def append(that: ViewS[T]): ViewS[T] = new Nested2[T](this, that)
     protected def prepend(that: ViewS[T]): ViewS[T] = new Nested2[T](that, this)
@@ -166,7 +213,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class Array1[T: Manifest](
     override val size: Int,
     a: Rep[Array[T]]
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     override lazy val reversed = new ReversedArray1(this) // cache it
     override def sliced(from: Int, until: Int) = {
       if (!checkSliceSize(from, until)) empty
@@ -180,6 +227,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(applyS(i))
     }
     override private[scalaviews] val t = manifest[T]
+    override protected def chunk(i: Rep[Int]): Rep[Array[T]] = a
+    override protected def computeChunkSizes: Array[Int] = scala.Array(size)
   }
 
   def apply[T: Manifest](len: Int) = {
