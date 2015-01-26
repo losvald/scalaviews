@@ -71,6 +71,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     with IfThenElse
     with NumericOps with PrimitiveOps with BooleanOps
     with Functions
+    with LiftVariables
     // with RangeOps with SeqOps with While with Variables
     // with Equal
     // with RangeOps with OrderingOps with MiscOps with ArrayOps with StringOps
@@ -407,10 +408,10 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
 
     override protected def append(that: ViewS[T]) = {
-      var v1s = scala.List.empty[ViewS[T]]
+      var v1s: scala.List[ViewS[T]] = scala.Nil
       var last: ViewS[T] = null
       var cur: ViewS[T] = this
-      var maxDepth = cur.depth
+      var maxDepth: Int = cur.depth
       while (cur ne vFlatLast) {
         maxDepth -= 1
         val curNested = cur.asInstanceOf[Nested2[T]]
@@ -428,10 +429,10 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     }
 
     override protected def prepend(that: ViewS[T]) = {
-      var v2s = scala.List.empty[ViewS[T]]
+      var v2s: scala.List[ViewS[T]] = scala.Nil
       var first: ViewS[T] = null
       var cur: ViewS[T] = this
-      var maxDepth = cur.depth
+      var maxDepth: Int = cur.depth
       while (cur ne vFlatFirst) {
         maxDepth -= 1
         val curNested = cur.asInstanceOf[Nested2[T]]
@@ -535,7 +536,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   }
 
   private def roundUpToPow2(n: Int) = {
-    var p = 1
+    var p: Int = 1
     while (p < n) p <<= 1
     p
   }
