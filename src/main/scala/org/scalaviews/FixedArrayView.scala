@@ -166,7 +166,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
   private[scalaviews] case class Array1[T: Manifest](
     override val size: Int,
-    a: Rep[Array[T]]
+    a: Array[T]
   ) extends ViewS[T] {
     override lazy val reversed = new ReversedArray1(this) // cache it
     override def sliced(from: Int, until: Int) = {
@@ -174,7 +174,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       else new Array1Slice[T](this, from, until)
     }
 
-    override private[scalaviews] def applyS(i: Rep[Int]) = a(i)
+    override private[scalaviews] def applyS(i: Rep[Int]) =
+      staticData(a).apply(i)
     override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
       import scala.language.reflectiveCalls // needed for unrollForArray
       for (i <- unrollForArray(0 until size))
@@ -187,7 +188,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     require(len > 0)
     (arr: Array[T]) => {
       require(arr != null)
-      new Array1[T](len, staticData(arr))
+      new Array1[T](len, arr)
     }
   }
 
@@ -211,8 +212,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
   private[scalaviews] case class Array2[T: Manifest](
     override val size: Int,
-    private[scalaviews] a1: Rep[Array[T]], len1: Int,
-    private[scalaviews] a2: Rep[Array[T]]
+    a1: Array[T], len1: Int,
+    a2: Array[T]
   ) extends ViewS[T] {
     // TODO: consider adding len2 and letting len1/len2 be private[scalaviews]
     override lazy val reversed = // cache it
@@ -225,15 +226,15 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       else new Array2Slice[T](this, from, until)
     }
     override private[scalaviews] def applyS(i: Rep[Int]) = {
-      if (i < len1) a1(i)
-      else a2(i - len1)
+      if (i < len1) staticData(a1).apply(i)
+      else staticData(a2).apply(i - len1)
     }
     override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
       import scala.language.reflectiveCalls // needed for unrollForArray
       for (i <- unrollForArray(0 until len1))
-        f(a1(i))
+        f(staticData(a1).apply(i))
       for (i <- unrollForArray(len1 until size))
-        f(a2(i - len1))
+        f(staticData(a2).apply(i - len1))
     }
     override private[scalaviews] val t = manifest[T]
   }
@@ -242,7 +243,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     require(len1 > 0 & len2 > 0)
     (arr1: Array[T], arr2: Array[T]) => { // this compiles for each a1/2
       require(arr1 != null & arr2 != null)
-      new Array2(len1 + len2, staticData(arr1), len1, staticData(arr2))
+      new Array2(len1 + len2, arr1, len1, arr2)
     }
   }
 
@@ -260,9 +261,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
       import scala.language.reflectiveCalls // needed for unrollForArray
       for (i <- unrollForArray(from until a.len1))
-        f(a.a1(i))
+        f(staticData(a.a1).apply(i))
       for (i <- unrollForArray(a.len1 until until))
-        f(a.a2(i - a.len1))
+        f(staticData(a.a2).apply(i - a.len1))
     }
     override private[scalaviews] val t = manifest[T]
   }
@@ -354,9 +355,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
       import scala.language.reflectiveCalls // needed for unrollForArray
       for (i <- unrollForArray(-(a.size - 1 - from) until 1 - (a.rev.len1)))
-        f(a.rev.a2(-1 * i - a.rev.len1))
+        f(staticData(a.rev.a2).apply(-1 * i - a.rev.len1))
       for (i <- unrollForArray(1 - (a.rev.len1) until 1 - (a.size - until)))
-        f(a.rev.a1(-1 * i)) // XXX: circumvent bugs with step<0 and unary -
+        f(staticData(a.rev.a1).apply(-1 * i))
     }
     override private[scalaviews] val t = manifest[T]
   }
