@@ -23,6 +23,8 @@ package org.scalaviews
 
 import scala.virtualization.lms.common._
 
+import scala.collection.mutable.ArrayBuilder
+
 private[scalaviews] trait FixedArrayViewLike[T, +This <: FixedArrayView[T]]
     extends View[T] with (Int => T) {
   override val size: Int
@@ -96,6 +98,60 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] implicit val t: Manifest[T]
   }
 
+  private[scalaviews] trait IteratorS[T] { this: ViewS[T] =>
+    override final def iterator = new Iter
+    // make Iter a non-anonymous class so that test code can inspect it
+    private[scalaviews] class Iter extends Iterator[T] {
+      override final def next(): T = nextC()
+      override final def hasNext = hasNextC()
+      private[scalaviews] final lazy val nextC = compile(nextS)
+      private[scalaviews] def nextS(u: Rep[Unit]): Rep[T] = {
+        val ret = chunks(chunkInd).apply(localInd)
+        localInd += (if (chunkRevs(chunkInd)) -1 else 1)
+        if (localInd == localIndEnds(chunkInd)) {
+          chunkInd += 1
+          // using setter directly avoids a compilation bug (see FIXME below)
+          localInd_=(staticData(localIndBegs).apply(chunkInd))
+        }
+        ret
+      }
+      private[scalaviews] lazy val hasNextC = compile(hasNextS)
+      private[scalaviews] def hasNextS(u: Rep[Unit]): Rep[Boolean] =
+        chunkInd < localIndBegs.length - 1 || localInd != localIndEnds(chunkInd)
+
+      import IteratorS.State
+      import State.{ChunkInd,LocalInd} // import values only
+      private val state = staticData({
+        val a = new Array[Int](State.maxId)
+        a(LocalInd.id) = localIndBegs(0)
+        a
+      })
+      private[scalaviews] def chunkInd: Rep[Int] = state.apply(ChunkInd.id)
+      private def chunkInd_=(x: Rep[Int]) = state.update(ChunkInd.id, x)
+      private[scalaviews] def localInd: Rep[Int] = state.apply(LocalInd.id)
+      private def localInd_=(x: Rep[Int]) = state.update(LocalInd.id, x)
+    }
+    private lazy val (chunks, localIndBegs, localIndEnds, chunkRevs) = {
+      val begsBuilder = new ArrayBuilder.ofInt
+      val endsBuilder = new ArrayBuilder.ofInt
+      val csBuf = ArrayBuilder.make[Chunk]
+      computeChunks(csBuf, begsBuilder, endsBuilder)
+      val begs = begsBuilder.result()
+      val ends = endsBuilder.result()
+      // TODO: implement staging of BitSet and use it instead of Array(Buffer)
+      val cs = csBuf.result()
+      val revs = for ((beg, end) <- begs.zip(ends)) yield beg > end
+      (staticData(cs), begs, staticData(ends), staticData(revs))
+    }
+  }
+
+  private object IteratorS {
+    private object State extends Enumeration {
+      type State = Value
+      val ChunkInd, LocalInd = Value
+    }
+  }
+
   private[scalaviews] trait ViewS[T] extends FixedArrayView[T]
       with FixedArrayViewLike[T, ViewS[T]]
       with ApplyS[T] with ForeachS[T] {
@@ -110,6 +166,11 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
     def :++(that: ViewS[T]): ViewS[T] = ViewS.concat(this, that)
     def ++:(that: ViewS[T]): ViewS[T] = ViewS.concat(that, this)
+
+    private[scalaviews] type Chunk = Array[T]
+    private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    )
 
     protected def append(that: ViewS[T]): ViewS[T] = new Nested2[T](this, that)
     protected def prepend(that: ViewS[T]): ViewS[T] = new Nested2[T](that, this)
@@ -145,6 +206,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     final override protected[scalaviews] def inorder(
       f: ViewS[Any] => Unit): Unit = { }
     final override protected[scalaviews] val depth = 0
+    final override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) { }
 
     // staged methods will not be called, so they can return anything
     final override private[scalaviews] def applyS(i: Rep[Int]) = 0
@@ -167,7 +231,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class Array1[T: Manifest](
     override val size: Int,
     a: Array[T]
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     override lazy val reversed = new ReversedArray1(this) // cache it
     override def sliced(from: Int, until: Int) = {
       if (!checkSliceSize(from, until)) empty
@@ -182,9 +246,17 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(applyS(i))
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) {
+      cs += a
+      begs += 0
+      ends += size
+    }
   }
 
-  def apply[T: Manifest](len: Int) = {
+  def apply[T: Manifest](len: Int
+  ) = {
     require(len > 0)
     (arr: Array[T]) => {
       require(arr != null)
@@ -195,7 +267,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class Array1Slice[T: Manifest](
     a: Array1[T],
     from: Int, until: Int
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     override val size = until - from
     override lazy val reversed = // call ctor directly to avoid check & cache it
       new ReversedArray1Slice(a.reversed, a.size - until, a.size - from)
@@ -208,6 +280,13 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(a.applyS(i))
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) {
+      cs += a.a
+      begs += from
+      ends += until
+    }
   }
 
   private[scalaviews] case class Array2[T: Manifest](
@@ -237,6 +316,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(staticData(a2).apply(i - len1))
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) = ???
   }
 
   def apply[T: Manifest](len1: Int, len2: Int) = {
@@ -266,6 +348,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(staticData(a.a2).apply(i - a.len1))
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) = ???
   }
 
   private[scalaviews] trait ReversedApplyS[T] extends ApplyS[T] {
@@ -277,7 +362,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
   private[scalaviews] case class ReversedArray1[T: Manifest](
     private[scalaviews] val rev: Array1[T]
-  ) extends ViewS[T] with ReversedApplyS[T] {
+  ) extends ViewS[T] with ReversedApplyS[T] with IteratorS[T]{
     override val size = rev.size
     override val reversed = rev
     override def sliced(from: Int, until: Int) = {
@@ -295,12 +380,19 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(rev.applyS(-1 * i)) // XXX: unary minus not supported, so use * -1
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) {
+      cs += rev.a
+      begs += size - 1
+      ends += -1
+    }
   }
 
   private[scalaviews] case class ReversedArray1Slice[T: Manifest](
     a: ReversedArray1[T],
     from: Int, until: Int
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     override val size = until - from
     override lazy val reversed = // call ctor directly to avoid check & cache it
       new Array1Slice(a.reversed, a.size - until, a.size - from)
@@ -314,6 +406,13 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(a.rev.applyS(-1 * i)) // XXX: circumvent bugs with step<0 and unary -
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) {
+      cs += a.rev.a
+      begs += a.size - from - 1
+      ends += a.size - until - 1
+    }
   }
 
   private[scalaviews] case class ReversedArray2[T: Manifest](
@@ -338,6 +437,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(rev.applyS(-1 * i)) // XXX: unary minus not supported, so use * -1
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) = ???
   }
 
   private[scalaviews] case class ReversedArray2Slice[T: Manifest](
@@ -360,6 +462,9 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
         f(staticData(a.rev.a1).apply(-1 * i))
     }
     override private[scalaviews] val t = manifest[T]
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) = ???
   }
 
   private[scalaviews] case class Nested2[T: Manifest](
@@ -449,6 +554,10 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
       (that /: v2s)(new Nested2[T](_, _))
     }
+
+    override private[scalaviews] def computeChunks(
+      cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+    ) = ???
   }
 
   private object Nested2 {
@@ -517,12 +626,26 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
           Rep[Unit] = {
         v.sliced(from, until).foreachS((x: Rep[T]) => f(x + x))
       }
+      override private[scalaviews] def computeChunks(
+        cs: ArrayBuilder[Chunk],
+        begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+      ) {
+        begs += from
+        ends += until
+      }
       override lazy val reversed: Doubled = new Doubled(from, until)
           with ReversedApplyS[T] {
         override lazy val reversed = rev
         override def sliced(from: Int, until: Int) =
           Doubled.this.sliced(v.size - until, v.size - from).reversed
         override private[scalaviews] val rev = Doubled.this
+        override private[scalaviews] def computeChunks(
+          cs: ArrayBuilder[Chunk],
+          begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
+        ) {
+          begs += Doubled.this.until - 1
+          ends += Doubled.this.from - 1
+        }
       }
       override def sliced(from: Int, until: Int) =
         new Doubled(from, until)
@@ -542,17 +665,17 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     p
   }
 
-  private def nest[T : Manifest](
+  private def nest[T: Manifest](
     as: IndexedSeq[Array[T]], from: Int, until: Int
   ): ViewS[T] = {
     val size: Int = (if (as.size < until) as.size else until) - from
     (size: @scala.annotation.switch) match {
       case 1 => {
-        val f = apply(as(from).size)
+        val f = apply[T](as(from).size)
         f(as(from))
       }
       case 2 => {
-        val f = apply(as(from).size, as(from + 1).size)
+        val f = apply[T](as(from).size, as(from + 1).size)
         f(as(from), as(from + 1))
       }
       case _ => {

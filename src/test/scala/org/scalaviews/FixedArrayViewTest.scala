@@ -1172,4 +1172,9 @@ val x\d+ = x\d+\(x\d+\)""" * sizeElems._1)
         "0",
         "0"))
   }
+
+  def getIteratorS[T](v: FixedArrayView[T]) =
+    v.asInstanceOf[FixedArrayViewFactory#IteratorS[T]].iterator
+
+  // TODO: implement tests that inspect code of compiled iteratorS methods
 }
