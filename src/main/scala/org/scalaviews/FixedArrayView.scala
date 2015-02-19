@@ -354,8 +354,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       a.applyS(from + i)
     override private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit] = {
       import scala.language.reflectiveCalls // needed for unrollForArray
-      for (i <- unrollForArray(-(a.size - 1 - from) until 1 - (a.rev.len1)))
-        f(staticData(a.rev.a2).apply(-1 * i - a.rev.len1))
+      for (i <- unrollForArray(-(a.len2 - 1 - from) until 1))
+        f(staticData(a.rev.a2).apply(-1 * i))
       for (i <- unrollForArray(1 - (a.rev.len1) until 1 - (a.size - until)))
         f(staticData(a.rev.a1).apply(-1 * i))
     }
