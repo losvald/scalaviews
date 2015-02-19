@@ -133,7 +133,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       }
       private[scalaviews] lazy val hasNextC = compile(hasNextS)
       private[scalaviews] def hasNextS(u: Rep[Unit]): Rep[Boolean] =
-        chunkInd < chunkCnt - 1 || localInd != localIndEnds(chunkInd)
+        chunkInd < chunkCnt
 
       import IteratorS.State
       import State.{ChunkInd,LocalInd} // import values only
