@@ -99,7 +99,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   }
 
   private[scalaviews] trait IteratorS[T] { this: ViewS[T] =>
-    override final def iterator = new Iter
+    override def iterator: Iterator[T] = new Iter
     // make Iter a non-anonymous class so that test code can inspect it
     private[scalaviews] class Iter extends Iterator[T] {
       // compile { u: Rep[Unit] =>
@@ -133,7 +133,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       }
       private[scalaviews] lazy val hasNextC = compile(hasNextS)
       private[scalaviews] def hasNextS(u: Rep[Unit]): Rep[Boolean] =
-        chunkInd < localIndBegs.length - 2 || localInd != localIndEnds(chunkInd)
+        chunkInd < chunkCnt - 1 || localInd != localIndEnds(chunkInd)
 
       import IteratorS.State
       import State.{ChunkInd,LocalInd} // import values only
@@ -147,6 +147,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       private[scalaviews] def localInd: Rep[Int] = state.apply(LocalInd.id)
       private def localInd_=(x: Rep[Int]) = state.update(LocalInd.id, x)
     }
+    protected def chunkCnt = localIndBegs.length - 1
     private lazy val (chunks, localIndBegs, localIndEnds, chunkRevs) = {
       val begsBuilder = new ArrayBuilder.ofInt
       val endsBuilder = new ArrayBuilder.ofInt
@@ -501,12 +502,14 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     }
   }
 
+  private[scalaviews] val stagedIterThreshold = 1 << 16 // 65K
+
   private[scalaviews] case class Nested2[T: Manifest](
     v1: ViewS[T],
     v2: ViewS[T],
     vFlatFirst: ViewS[T],
     vFlatLast: ViewS[T]
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     def this(v1: ViewS[T], v2: ViewS[T]) = this(v1, v2,
       if (v1.isInstanceOf[Nested2[T]]) v1.asInstanceOf[Nested2[T]].vFlatFirst
       else v1,
@@ -522,7 +525,15 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       else if (until <= v1.size) v1.sliced(from, until)
       else new Nested2[T](v1.from(from), v2.until(until - v1.size))
     }
-    override def iterator: scala.Iterator[T] = new Nested2.Iter[T](this)
+    override def iterator: Iterator[T] = {
+      // stage the iterator unless the number of chunks is huge,
+      // to avoid memory hog due to staging of several huge arrays
+      // (which are lazily created, so there will be no memory overhead)
+      if (chunkCnt < stagedIterThreshold) super.iterator
+      else iteratorUnstaged
+    }
+    protected[scalaviews] def iteratorUnstaged: Iterator[T] =
+      new Nested2.Iter[T](this)
 
     override protected[scalaviews] val depth =
       1 + scala.math.max(v1.depth, v2.depth)
@@ -591,7 +602,10 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
 
     override private[scalaviews] def computeChunks(
       cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
-    ) = ???
+    ) = {
+      v1.computeChunks(cs, begs, ends)
+      v2.computeChunks(cs, begs, ends)
+    }
   }
 
   private object Nested2 {

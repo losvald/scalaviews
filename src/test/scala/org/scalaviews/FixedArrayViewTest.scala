@@ -881,15 +881,19 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   test("N-array - iterator (depth 1)") {
     val vDepth1 = v4
     assume(vDepth1.depth === 1)
-    vDepth1.iterator.toArray must contain theSameElementsInOrderAs (
-      (Array.empty[Int] /: v4Arrays)(_ ++ _))
+    val act = vDepth1.iterator.toArray
+    act must contain theSameElementsInOrderAs (v4Arrays.flatten)
+    act must contain theSameElementsInOrderAs (
+      vDepth1.asInstanceOf[Nested2[Int]].iteratorUnstaged.toArray[Int])
   }
 
   test("N-array - iterator (depth 2)") {
     val vDepth2 = v7
     assume(vDepth2.depth === 2)
-    vDepth2.iterator.toArray must contain theSameElementsInOrderAs (
-      (Array.empty[Int] /: v7Arrays)(_ ++ _))
+    val act = vDepth2.iterator.toArray
+    act must contain theSameElementsInOrderAs (v7Arrays.flatten)
+    act must contain theSameElementsInOrderAs (
+      vDepth2.asInstanceOf[Nested2[Int]].iteratorUnstaged.toArray[Int])
   }
 
   test("N-array - iterator (unbalanced)") {
@@ -902,10 +906,11 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     assume(v._2._2.depth === 0)
     assume(v._2.depth - v._1.depth === 2)
     assume(v._2._1.depth - v._2._2.depth === 1)
-    // TODO: Why using toArray gives ambiguous implicit conversion error?
-    v.iterator.toList must contain theSameElementsInOrderAs (
-      a2Len3.toList ++ (List.empty[Int] /: v4Arrays)(_ ++ _.toList) ++
-        a1Len5.toList)
+    val act = v.iterator.toArray
+    act must contain theSameElementsInOrderAs (
+      a2Len3 ++ v4Arrays.flatten ++ a1Len5)
+    act must contain theSameElementsInOrderAs (
+      v.asInstanceOf[Nested2[Int]].iteratorUnstaged.toArray[Int])
   }
 
   private def foreachList[T](v: FixedArrayView[T]) = {
@@ -1173,8 +1178,10 @@ val x\d+ = x\d+\(x\d+\)""" * sizeElems._1)
         "0"))
   }
 
+  type IterS[T] = FixedArrayViewFactory#IteratorS[T]#Iter
   def getIteratorS[T](v: FixedArrayView[T]) =
-    v.asInstanceOf[FixedArrayViewFactory#IteratorS[T]].iterator
+    v.asInstanceOf[FixedArrayViewFactory#IteratorS[T]].iterator.asInstanceOf[
+      IterS[T]]
 
   // TODO: implement tests that inspect code of compiled iteratorS methods
 }
