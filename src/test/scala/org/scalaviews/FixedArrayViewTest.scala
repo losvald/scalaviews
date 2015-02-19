@@ -871,11 +871,11 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     len5And3.iterator.toList must contain theSameElementsInOrderAs len5And3List
     len5And3Rev.iterator.toList must contain theSameElementsInOrderAs (
       len5And3List.reverse)
-    val len5And3From1Until5List = len5And3List.slice(1, 5)
-    len5And3From1Until5.iterator.toList must contain theSameElementsInOrderAs (
-      len5And3From1Until5List)
-    (len5And3From1Until5.reversed.iterator.toList must contain
-      theSameElementsInOrderAs len5And3From1Until5List.reverse)
+    val len5And3From4Until6List = len5And3List.slice(4, 6)
+    len5And3From4Until6.iterator.toList must contain theSameElementsInOrderAs (
+      len5And3From4Until6List)
+    (len5And3From4Until6.reversed.iterator.toList must contain
+      theSameElementsInOrderAs len5And3From4Until6List.reverse)
   }
 
   test("N-array - iterator (depth 1)") {

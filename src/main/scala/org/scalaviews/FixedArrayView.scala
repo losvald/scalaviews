@@ -102,22 +102,38 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override final def iterator = new Iter
     // make Iter a non-anonymous class so that test code can inspect it
     private[scalaviews] class Iter extends Iterator[T] {
+      // compile { u: Rep[Unit] =>
+      //   println("[Iter] localIndBegs(0)=" +
+      //     staticData(localIndBegs).apply(0) +
+      //     " localIndEnds(0)=" + localIndEnds(0))
+      // } apply()
       override final def next(): T = nextC()
       override final def hasNext = hasNextC()
       private[scalaviews] final lazy val nextC = compile(nextS)
       private[scalaviews] def nextS(u: Rep[Unit]): Rep[T] = {
         val ret = chunks(chunkInd).apply(localInd)
-        localInd += (if (chunkRevs(chunkInd)) -1 else 1)
-        if (localInd == localIndEnds(chunkInd)) {
-          chunkInd += 1
+        // FIXME: changes made to state are not seen until the end of the call
+        // XXX: as workaround, introduce a val for each write-read dependency
+        // print("[nextS] chunkCnt=" + staticData(localIndBegs.length))
+        // print(" state=" + chunkInd + "," + localInd)
+        val localIndNext = localInd + (if (chunkRevs(chunkInd)) -1 else 1)
+        // print("->" + chunkInd + "," + localIndNext)
+        if (localIndNext == localIndEnds(chunkInd)) {
+          val chunkIndNext = chunkInd + 1
           // using setter directly avoids a compilation bug (see FIXME below)
-          localInd_=(staticData(localIndBegs).apply(chunkInd))
+          localInd_=(staticData(localIndBegs).apply(chunkIndNext))
+          // print("-(next)->" + chunkIndNext + "," + localIndNext)
+          chunkInd_=(chunkIndNext)
+        } else {
+          localInd_=(localIndNext)
+          // print("-(same)->" + chunkInd + "," + localIndNext)
         }
+        // println(" ret=" + ret)
         ret
       }
       private[scalaviews] lazy val hasNextC = compile(hasNextS)
       private[scalaviews] def hasNextS(u: Rep[Unit]): Rep[Boolean] =
-        chunkInd < localIndBegs.length - 1 || localInd != localIndEnds(chunkInd)
+        chunkInd < localIndBegs.length - 2 || localInd != localIndEnds(chunkInd)
 
       import IteratorS.State
       import State.{ChunkInd,LocalInd} // import values only
@@ -136,6 +152,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
       val endsBuilder = new ArrayBuilder.ofInt
       val csBuf = ArrayBuilder.make[Chunk]
       computeChunks(csBuf, begsBuilder, endsBuilder)
+      begsBuilder += 0
+      endsBuilder += 0
       val begs = begsBuilder.result()
       val ends = endsBuilder.result()
       // TODO: implement staging of BitSet and use it instead of Array(Buffer)
@@ -293,7 +311,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override val size: Int,
     a1: Array[T], len1: Int,
     a2: Array[T]
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     // TODO: consider adding len2 and letting len1/len2 be private[scalaviews]
     override lazy val reversed = // cache it
       new ReversedArray2[T](this, size - len1)
@@ -318,7 +336,11 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
     override private[scalaviews] def computeChunks(
       cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
-    ) = ???
+    ) {
+      cs += a1 += a2
+      begs += 0 += 0
+      ends += len1 += size - len1
+    }
   }
 
   def apply[T: Manifest](len1: Int, len2: Int) = {
@@ -332,7 +354,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class Array2Slice[T: Manifest](
     a: Array2[T],
     from: Int, until: Int
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     override val size = until - from
     override lazy val reversed = // call ctor directly to avoid check & cache it
       new ReversedArray2Slice(a.reversed, a.size - until, a.size - from)
@@ -350,7 +372,11 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
     override private[scalaviews] def computeChunks(
       cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
-    ) = ???
+    ) {
+      cs += a.a1 += a.a2
+      begs += from += 0
+      ends += a.len1 += until - a.len1
+    }
   }
 
   private[scalaviews] trait ReversedApplyS[T] extends ApplyS[T] {
@@ -418,7 +444,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class ReversedArray2[T: Manifest](
     private[scalaviews] val rev: Array2[T],
     len2: Int // cache it to avoid the frequent computation (size - rev.len1)
-  ) extends ViewS[T] with ReversedApplyS[T] {
+  ) extends ViewS[T] with ReversedApplyS[T] with IteratorS[T] {
     override val size = rev.size
     override val reversed = rev
     override def sliced(from: Int, until: Int): ViewS[T] = {
@@ -439,13 +465,17 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
     override private[scalaviews] def computeChunks(
       cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
-    ) = ???
+    ) {
+      cs += rev.a2 += rev.a1
+      begs += len2 - 1 += rev.len1 - 1
+      ends += -1 += -1
+    }
   }
 
   private[scalaviews] case class ReversedArray2Slice[T: Manifest](
     a: ReversedArray2[T],
     from: Int, until: Int
-  ) extends ViewS[T] {
+  ) extends ViewS[T] with IteratorS[T] {
     override val size = until - from
     // XXX: this creates a copy of the original Array2Slice
     override lazy val reversed = // call ctor directly to avoid check & cache it
@@ -464,7 +494,11 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
     override private[scalaviews] def computeChunks(
       cs: ArrayBuilder[Chunk], begs: ArrayBuilder[Int], ends: ArrayBuilder[Int]
-    ) = ???
+    ) {
+      cs += a.rev.a2 += a.rev.a1
+      begs += a.len2 - from - 1 += a.rev.len1 - 1
+      ends += -1 += a.size - until - 1
+    }
   }
 
   private[scalaviews] case class Nested2[T: Manifest](
