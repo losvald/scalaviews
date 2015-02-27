@@ -1,5 +1,5 @@
 /*
- * FixedArrayView.scala
+ * ArrayView.scala
  *
  * Copyright (C) 2014 Leo Osvald <leo.osvald@gmail.com>
  *
@@ -25,7 +25,7 @@ import scala.virtualization.lms.common._
 
 import scala.collection.mutable.ArrayBuilder
 
-private[scalaviews] trait FixedArrayViewLike[T, +This <: FixedArrayView[T]]
+private[scalaviews] trait ArrayViewLike[T, +This <: ArrayView[T]]
     extends View[T] with (Int => T) {
   override val size: Int
   def reversed: This
@@ -40,10 +40,10 @@ private[scalaviews] trait FixedArrayViewLike[T, +This <: FixedArrayView[T]]
     f(this.asInstanceOf[This])
 }
 
-trait FixedArrayView[@specialized(Int, Double) T]
-    extends FixedArrayViewLike[T, FixedArrayView[T]] {
-  def :++(that: FixedArrayView[T]): FixedArrayView[T]
-  def ++:(that: FixedArrayView[T]): FixedArrayView[T]
+trait ArrayView[@specialized(Int, Double) T]
+    extends ArrayViewLike[T, ArrayView[T]] {
+  def :++(that: ArrayView[T]): ArrayView[T]
+  def ++:(that: ArrayView[T]): ArrayView[T]
   override def foreach(f: T => Unit): Unit = {
     val iter = iterator
     while (iter.hasNext)
@@ -52,11 +52,11 @@ trait FixedArrayView[@specialized(Int, Double) T]
   override def iterator = new Iterator[T] {
     private var ind = 0
     override def next = {
-      val ret = FixedArrayView.this.apply(ind)
+      val ret = ArrayView.this.apply(ind)
       ind += 1
       ret
     }
-    override def hasNext = ind != FixedArrayView.this.size
+    override def hasNext = ind != ArrayView.this.size
   }
   protected[scalaviews] val depth: Int = 0
   protected def checkSliceSize(from: Int, until: Int): Boolean = {
@@ -67,7 +67,7 @@ trait FixedArrayView[@specialized(Int, Double) T]
 }
 
 private[scalaviews]
-trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
+trait ArrayViewFactory extends ViewFactory with ScalaOpsPkg
     with LiftNumeric with LiftBoolean
     with StaticData
     with IfThenElse
@@ -81,7 +81,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     // with ObjectOps
 {
 
-  private[scalaviews] trait ApplyS[T] { this: FixedArrayView[T] =>
+  private[scalaviews] trait ApplyS[T] { this: ArrayView[T] =>
     override final def apply(i: Int): T = applyC(i)
     private[scalaviews] final lazy val applyC = compile(applyS)
 
@@ -91,7 +91,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] implicit val t: Manifest[T]
   }
 
-  private[scalaviews] trait ForeachS[T] { this: FixedArrayView[T] =>
+  private[scalaviews] trait ForeachS[T] { this: ArrayView[T] =>
     override final def foreach(f: T => Unit): Unit = foreachC(f)
     private[scalaviews] final lazy val foreachC = compile(foreachS)
     private[scalaviews] def foreachS(f: Rep[T => Unit]): Rep[Unit]
@@ -171,14 +171,14 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     }
   }
 
-  private[scalaviews] trait ViewS[T] extends FixedArrayView[T]
-      with FixedArrayViewLike[T, ViewS[T]]
+  private[scalaviews] trait ViewS[T] extends ArrayView[T]
+      with ArrayViewLike[T, ViewS[T]]
       with ApplyS[T] with ForeachS[T] {
-    override final def :++(that: FixedArrayView[T]) = that match {
+    override final def :++(that: ArrayView[T]) = that match {
       case that: ViewS[T] => if (that.size > 0) this :++ that else this
       case _ => that ++: this // non-ViewS might have dynamic size, so no check
     }
-    override final def ++:(that: FixedArrayView[T]) = that match {
+    override final def ++:(that: ArrayView[T]) = that match {
       case that: ViewS[T] => if (that.size > 0) that ++: this else this
       case _ => this :++ that // non-ViewS might have dynamic size, so no check
     }
@@ -207,8 +207,8 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   }
 
   // TODO: this is a bit messy, since Empty should really belong to
-  // FixedArrayView companion object, but this would require changing the
-  // interface of FixedArrayView not to return subtypes (i.e. give up on *Like)
+  // ArrayView companion object, but this would require changing the
+  // interface of ArrayView not to return subtypes (i.e. give up on *Like)
   private case object Empty extends ViewS[Any] {
     final override val size = 0
     final override def reversed = this
@@ -381,7 +381,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   }
 
   private[scalaviews] trait ReversedApplyS[T] extends ApplyS[T] {
-    this: FixedArrayView[T] =>
+    this: ArrayView[T] =>
     private[scalaviews] val rev: ApplyS[T]
     override private[scalaviews] def applyS(i: Rep[Int]): Rep[T] =
        rev.applyS(size - 1 - i)
@@ -659,10 +659,10 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   // XXX: this belongs to test code, but we apparently cannot:
   // - mix the staged code (Rep etc.) from here with the one from subclass
   // - use Rep from outside the factory
-  private[scalaviews] def _doubled[T: Manifest](v0: FixedArrayView[T])(
+  private[scalaviews] def _doubled[T: Manifest](v0: ArrayView[T])(
     implicit n: Numeric[T]
-  ): FixedArrayView[T] = {
-    val v = v0.asInstanceOf[FixedArrayView[T] with ViewS[T]]
+  ): ArrayView[T] = {
+    val v = v0.asInstanceOf[ArrayView[T] with ViewS[T]]
     class Doubled(from: Int, until: Int) extends ViewS[T] {
       override val size = until - from
       import n.mkNumericOps // needed in applyS and foreachS
@@ -702,7 +702,7 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
     new Doubled(0, v.size)
   }
 
-  def nested[T: Manifest](as: Array[T]*): FixedArrayView[T] = {
+  def nested[T: Manifest](as: Array[T]*): ArrayView[T] = {
     require(as.forall(_.nonEmpty))
     nest(as.toIndexedSeq, 0, roundUpToPow2(as.size))
   }
@@ -734,13 +734,13 @@ trait FixedArrayViewFactory extends ViewFactory with ScalaOpsPkg
   }
 }
 
-object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
-  def apply[T: Manifest](a: Array[T]): FixedArrayView[T] = {
+object ArrayView extends ViewFactoryProvider[ArrayViewFactory] {
+  def apply[T: Manifest](a: Array[T]): ArrayView[T] = {
     val f = Factory(a.size)
     f(a)
   }
 
-  def apply[T: Manifest](a1: Array[T], a2: Array[T]): FixedArrayView[T] = {
+  def apply[T: Manifest](a1: Array[T], a2: Array[T]): ArrayView[T] = {
     val f = Factory(a1.size, a2.size)
     f(a1, a2)
   }
@@ -748,7 +748,7 @@ object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
   def apply[T: Manifest](
     a1: Array[T], a2: Array[T], a3: Array[T],
     aRest: Array[T]*
-  ): FixedArrayView[T] = {
+  ): ArrayView[T] = {
     // TODO: optimize for 3 or 4 chunks (avoid ++ and toIndexedSeq overhead)
     Factory.nested(IndexedSeq(a1, a2, a3) ++ aRest.toIndexedSeq: _*)
   }
@@ -758,10 +758,10 @@ object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
   trait Implicits {
     import scala.language.implicitConversions
 
-    implicit def array2FixedArrayView[T: Manifest](a: Array[T]):
-        FixedArrayView[T] =
-      Implicits.arrayCache.get().getOrElseUpdate(a, FixedArrayView(a))
-        .asInstanceOf[FixedArrayView[T]]
+    implicit def array2ArrayView[T: Manifest](a: Array[T]):
+        ArrayView[T] =
+      Implicits.arrayCache.get().getOrElseUpdate(a, ArrayView(a))
+        .asInstanceOf[ArrayView[T]]
   }
 
   object Implicits extends Implicits {
@@ -781,5 +781,5 @@ object FixedArrayView extends ViewFactoryProvider[FixedArrayViewFactory] {
     }
   }
 
-  override protected def mkFactory = new FixedArrayViewFactory with Driver
+  override protected def mkFactory = new ArrayViewFactory with Driver
 }

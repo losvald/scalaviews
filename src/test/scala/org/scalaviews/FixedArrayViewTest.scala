@@ -1,5 +1,5 @@
 /*
- * FixedArrayViewTest.scala
+ * ArrayViewTest.scala
  *
  * Copyright (C) 2014 Leo Osvald <leo.osvald@gmail.com>
  *
@@ -26,8 +26,8 @@ import scala.virtualization.lms.common._
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.{FunSuite,MustMatchers}
 
-object FixedArrayViewTest {
-  type Factory = FixedArrayViewFactory
+object ArrayViewTest {
+  type Factory = ArrayViewFactory
 
   val a1Len5 = Array.range(0, 50, 10)
   val a2Len3 = Array.range(500, 800, 100)
@@ -44,20 +44,20 @@ object FixedArrayViewTest {
     Array(115, 116, 117))
 }
 
-class FixedArrayViewTest extends FunSuite with ClassMatchers {
-  import FixedArrayView._
-  import FixedArrayViewTest._
+class ArrayViewTest extends FunSuite with ClassMatchers {
+  import ArrayView._
+  import ArrayViewTest._
 
   // bring into scope inner case classes from the factory
-  type Array1[T] = FixedArrayViewFactory#Array1[T]
-  type Array1Slice[T] = FixedArrayViewFactory#Array1Slice[T]
-  type Array2[T] = FixedArrayViewFactory#Array2[T]
-  type Array2Slice[T] = FixedArrayViewFactory#Array2Slice[T]
-  type ReversedArray1[T] = FixedArrayViewFactory#ReversedArray1[T]
-  type ReversedArray1Slice[T] = FixedArrayViewFactory#ReversedArray1Slice[T]
-  type ReversedArray2[T] = FixedArrayViewFactory#ReversedArray2[T]
-  type ReversedArray2Slice[T] = FixedArrayViewFactory#ReversedArray2Slice[T]
-  type Nested2[T] = FixedArrayViewFactory#Nested2[T]
+  type Array1[T] = ArrayViewFactory#Array1[T]
+  type Array1Slice[T] = ArrayViewFactory#Array1Slice[T]
+  type Array2[T] = ArrayViewFactory#Array2[T]
+  type Array2Slice[T] = ArrayViewFactory#Array2Slice[T]
+  type ReversedArray1[T] = ArrayViewFactory#ReversedArray1[T]
+  type ReversedArray1Slice[T] = ArrayViewFactory#ReversedArray1Slice[T]
+  type ReversedArray2[T] = ArrayViewFactory#ReversedArray2[T]
+  type ReversedArray2Slice[T] = ArrayViewFactory#ReversedArray2Slice[T]
+  type Nested2[T] = ArrayViewFactory#Nested2[T]
 
   val len5F = Factory[Int](5)
   val len3F = Factory[Int](3)
@@ -283,11 +283,11 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   }
 
   test("generic - reversed") {
-    // Factory is not a stable identifier and FixedArrayViewFactory is a trait,
+    // Factory is not a stable identifier and ArrayViewFactory is a trait,
     // so it seems like we need to extend the factory if we want to use
     // path-dependent types ApplyS and Rep,
-    // class CustomFactory extends FixedArrayViewFactory with Driver {
-    //   val len5And3Dbl = new FixedArrayView[Int] with ApplyS[Int] {
+    // class CustomFactory extends ArrayViewFactory with Driver {
+    //   val len5And3Dbl = new ArrayView[Int] with ApplyS[Int] {
     //     // but compiler reports type mismatch of Rep
     //     private[scalaviews] override def applyS(i: Rep[Int]) =
     //       len5And3.applyS(i)
@@ -449,7 +449,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   }
 
   object Nested2Implicits {
-    implicit class Nested2WithSubviews[T: Manifest](v: FixedArrayView[T]) {
+    implicit class Nested2WithSubviews[T: Manifest](v: ArrayView[T]) {
       val _1 = v.asInstanceOf[Nested2[T]].v1
       val _2 = v.asInstanceOf[Nested2[T]].v2
     }
@@ -483,8 +483,8 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
       v7._2._2)
   }
 
-  private def assertTraversal[T, V <: FixedArrayView[T]](
-    traverse: (V => Unit) => Unit, exps0: FixedArrayView[T]*) = {
+  private def assertTraversal[T, V <: ArrayView[T]](
+    traverse: (V => Unit) => Unit, exps0: ArrayView[T]*) = {
     import org.scalatest.exceptions.{TestFailedException => TFE}
     var exps = exps0.toList.zipWithIndex
     try {
@@ -511,7 +511,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   test("1-array - :++") {
     import Nested2Implicits._
-    def verifyAppend(a1: FixedArrayView[Int]): Unit = {
+    def verifyAppend(a1: ArrayView[Int]): Unit = {
       val nested2 = a1 :++ len5And3
       nested2 mustBe a [Nested2[_]]
       nested2._2 must be theSameInstanceAs len5And3
@@ -524,7 +524,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyAppend(v1Len5From2)
     verifyAppend(v1Len5From2.reversed)
 
-    def verifyAppendEmpty(a1: FixedArrayView[Int]): Unit = {
+    def verifyAppendEmpty(a1: ArrayView[Int]): Unit = {
       val same = a1 :++ Factory.empty
       same must not be a [Nested2[_]]
       same must be theSameInstanceAs a1
@@ -538,7 +538,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   test("2-array - :++") {
     import Nested2Implicits._
-    def verifyAppend(a2: FixedArrayView[Int]): Unit = {
+    def verifyAppend(a2: ArrayView[Int]): Unit = {
       val nested2 = a2 :++ v1Len5
       nested2 mustBe a [Nested2[_]]
       nested2._2 must be theSameInstanceAs v1Len5
@@ -551,7 +551,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyAppend(len5And3From1Until5)
     verifyAppend(len5And3Rev until 5 from 1)
 
-    def verifyAppendEmpty(a2: FixedArrayView[Int]): Unit = {
+    def verifyAppendEmpty(a2: ArrayView[Int]): Unit = {
       val same = a2 :++ Factory.empty
       same must not be a [Nested2[_]]
       same must be theSameInstanceAs a2
@@ -659,7 +659,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   test("1-array - ++:") { // TLDR: symmetric to "1-array - :++"
     import Nested2Implicits._
-    def verifyPrepend(a1: FixedArrayView[Int]): Unit = {
+    def verifyPrepend(a1: ArrayView[Int]): Unit = {
       val nested2 = len5And3 ++: a1
       nested2 mustBe a [Nested2[_]]
       nested2._1 must be theSameInstanceAs len5And3
@@ -672,7 +672,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyPrepend(v1Len5From2)
     verifyPrepend(v1Len5From2.reversed)
 
-    def verifyPrependEmpty(a2: FixedArrayView[Int]): Unit = {
+    def verifyPrependEmpty(a2: ArrayView[Int]): Unit = {
       val same = Factory.empty[Int] ++: a2
       same must not be a [Nested2[_]]
       same must be theSameInstanceAs a2
@@ -686,7 +686,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
 
   test("2-array - ++:") { // TLDR: symmetric to "2-array - :++"
     import Nested2Implicits._
-    def verifyPrepend(a2: FixedArrayView[Int]): Unit = {
+    def verifyPrepend(a2: ArrayView[Int]): Unit = {
       val nested2 = v1Len5 ++: a2
       nested2 mustBe a [Nested2[_]]
       nested2._1 must be theSameInstanceAs v1Len5
@@ -699,7 +699,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
     verifyPrepend(len5And3From1Until5)
     verifyPrepend(len5And3Rev until 5 from 1)
 
-    def verifyPrependEmpty(a2: FixedArrayView[Int]): Unit = {
+    def verifyPrependEmpty(a2: ArrayView[Int]): Unit = {
       val same = Factory.empty[Int] ++: a2
       same must not be a [Nested2[_]]
       same must be theSameInstanceAs a2
@@ -913,7 +913,7 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
       v.asInstanceOf[Nested2[Int]].iteratorUnstaged.toArray[Int])
   }
 
-  private def foreachList[T](v: FixedArrayView[T]) = {
+  private def foreachList[T](v: ArrayView[T]) = {
     val data = scala.collection.mutable.MutableList.empty[T]
     v.foreach { datum => data += datum }
     data.toList
@@ -976,19 +976,19 @@ class FixedArrayViewTest extends FunSuite with ClassMatchers {
   }
 }
 
-class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
+class ArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     with ClassMatchers
     with BeforeAndAfterAll
-    with ViewFactoryProvider[FixedArrayViewFactory] {
-  import FixedArrayViewTest._
-  import FixedArrayView.{Factory => _, _} // mock the factory
-  def mkFactory = new FixedArrayViewFactory with Driver with CompileMock
+    with ViewFactoryProvider[ArrayViewFactory] {
+  import ArrayViewTest._
+  import ArrayView.{Factory => _, _} // mock the factory
+  def mkFactory = new ArrayViewFactory with Driver with CompileMock
 
   override def beforeAll() {
     Factory.reset
   }
 
-  type ApplyS[T] = FixedArrayViewFactory#ApplyS[T]
+  type ApplyS[T] = ArrayViewFactory#ApplyS[T]
 
   import CompileMock._
   import scala.language.reflectiveCalls
@@ -1016,7 +1016,7 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
 
   lazy val v7 = Factory.nested(v7Arrays: _*)
 
-  def getApplyC[T](v: FixedArrayView[T]) = v.asInstanceOf[ApplyS[_]].applyC
+  def getApplyC[T](v: ArrayView[T]) = v.asInstanceOf[ApplyS[_]].applyC
 
   test("applyC - Array1") {
     val method = getApplyC(len5)
@@ -1094,15 +1094,15 @@ class FixedArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     method.body must not include ("else")
 
     // verify that "2 + (20 - x)" is optimized to "22 - x"
-    // TODO: support such an arithmetic optimization in FixedArrayViewFactory
+    // TODO: support such an arithmetic optimization in ArrayViewFactory
     method.body must not contain allOf ('-', '+')
     method.body must not include ("20")
     method.body must include ("22")
     method.body.count(_ == '-') must be (1)
   }
 
-  def getForeachC[T](v: FixedArrayView[T]) =
-    v.asInstanceOf[FixedArrayViewFactory#ForeachS[T]].foreachC
+  def getForeachC[T](v: ArrayView[T]) =
+    v.asInstanceOf[ArrayViewFactory#ForeachS[T]].foreachC
 
   val foreachCBodyEnd = """
 \(\)"""
@@ -1178,9 +1178,9 @@ val x\d+ = x\d+\(x\d+\)""" * sizeElems._1)
         "0"))
   }
 
-  type IterS[T] = FixedArrayViewFactory#IteratorS[T]#Iter
-  def getIteratorS[T](v: FixedArrayView[T]) =
-    v.asInstanceOf[FixedArrayViewFactory#IteratorS[T]].iterator.asInstanceOf[
+  type IterS[T] = ArrayViewFactory#IteratorS[T]#Iter
+  def getIteratorS[T](v: ArrayView[T]) =
+    v.asInstanceOf[ArrayViewFactory#IteratorS[T]].iterator.asInstanceOf[
       IterS[T]]
 
   // TODO: implement tests that inspect code of compiled iteratorS methods
