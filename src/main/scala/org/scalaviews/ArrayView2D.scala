@@ -100,6 +100,61 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
   }
 
+  private[scalaviews] case class Chain[T: Manifest](
+    chainDim: Int,
+    subviews: IndexedSeq[ViewS[T]]
+  ) extends ViewS[T] {
+    override val sizes = {
+      var sizes: scala.Array[Int] = scala.Array(2)
+      val lateralDim = 1 - chainDim
+      val (vFirst, vRest) = (subviews.head, subviews.tail)
+      for (v <- vRest) {
+        sizes(chainDim) += v.sizes.productElement(chainDim).asInstanceOf[Int]
+        require(v.sizes.productElement(lateralDim) ==
+          vFirst.sizes.productElement(lateralDim))
+      }
+      new Tuple2(sizes(0), sizes(1))
+    }
+    override private[scalaviews] def foreachS(dim: Int)(
+      arg: Rep[(Int, DimEntry => Unit)]
+    ): Rep[Unit] = {
+      if (dim == chainDim) {
+        for (v <- subviews)
+          v.foreachS(dim)(arg)
+      } else {
+        val lateralInd = arg._1; val f = arg._2
+        val res = binSearchS(0, subviews.size, lateralInd)
+        val viewInd = res._1; val localInd = res._2
+        val v = subviews(viewInd)
+        // TODO: stuck; view is not staged but its selection depends on dynamic
+        // behavior (index found by the binary search)
+        // v.foreachS(dim)((localInd, f))
+        unit()
+      }
+    }
+    override private[scalaviews] val t = manifest[T]
+    private def binSearchS(lo: Int, hi: Int,
+      lateralInd: Rep[Int]//, f: Rep[DimEntry => Unit]
+    ): Rep[Tuple2[Int, Int]] = {
+      // find lowest index s.t. lateralCumSizes(index) > lateralInd
+      if (lo >= hi)
+        (hi: Rep[Int], lateralInd - (if (hi > 0) lateralCumSizes(hi) else 0))
+      else {
+        val mid = (lo + hi - 1) >>> 1
+        if (lateralCumSizes(mid) > lateralInd)
+          binSearchS(lo, mid, lateralInd)
+        else
+          binSearchS(mid + 1, hi, lateralInd)
+      }
+    }
+    private val lateralCumSizes: IndexedSeq[Int] = {
+      val lateralDim = 1 - chainDim
+      subviews.map(_.sizes.productElement(lateralDim)).scanLeft(0) {
+        _ + _.asInstanceOf[Int]
+      }
+    }
+  }
+
   private type Sizes = (Int, Int)
 }
 
