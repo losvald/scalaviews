@@ -33,8 +33,15 @@ private[scalaviews] trait ArrayView2DLike[T, +This <: ArrayView2D[T]] {
 trait ArrayView2D[@specialized(Int, Double) T]
     extends ArrayView2DLike[T, ArrayView2D[T]] {
   type DimEntry = (Int, T)
+  def append(dim: Int, other: ArrayView2D[T]): ArrayView2D[T]
   def foreach(dim: Int, lateralInd: Int, f: DimEntry => Unit): Unit
   protected[scalaviews] val depth: Int = 0
+  def along(dim: Int) = if (dim == 0) DimOp0 else DimOp1
+  case class DimOp(dim: Int) {
+    def :+(that: ArrayView2D[T]) = append(dim, that)
+  }
+  object DimOp0 extends DimOp(0)
+  object DimOp1 extends DimOp(1)
 }
 
 private[scalaviews]
@@ -53,9 +60,17 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   def empty[T: Manifest] = Empty.asInstanceOf[ViewS[T]]
   def diag[T: Manifest](values: Array[T]): ArrayView2D[T] =
     new Diag[T](values)
+  def chain[T: Manifest](
+    chainDim: Int,
+    subviews: ViewS[T]*
+  ): ArrayView2D[T] = new Chain(chainDim, subviews.toIndexedSeq)
 
   private[scalaviews] trait ViewS[T] extends ArrayView2D[T]
       with ArrayView2DLike[T, ViewS[T]] {
+    override final def append(dim: Int, that: ArrayView2D[T]) = that match {
+      case that: ViewS[T] => this.append0(dim, that)
+      case _ => ??? // TODO: that.prepend0(this)
+    }
     override final def foreach(
       dim: Int, lateralInd: Int, f: DimEntry => Unit
     ): Unit = {
@@ -67,6 +82,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit]
     private[scalaviews] implicit val t: Manifest[T]
+    protected def append0(dim: Int, that: ViewS[T]) =
+      chain(dim, this, that)
   }
 
   private case object Empty extends ViewS[Any] {
@@ -75,6 +92,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     final override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = {}
     final override private[scalaviews] val t = manifest[Any]
+    final override protected def append0(dim: Int, that: ViewS[Any]) = that
   }
 
   private[scalaviews] case class Diag[T: Manifest](a: Array[T])
@@ -88,6 +106,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       f((lateralInd, staticData(a).apply(lateralInd)))
     }
     override private[scalaviews] val t = manifest[T]
+    override protected def append0(dim: Int, that: ViewS[T]) =
+      chain(dim, this, that)
   }
 
   private[scalaviews] case class Implicit[T: Manifest](
@@ -105,9 +125,11 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     subviews: IndexedSeq[ViewS[T]]
   ) extends ViewS[T] {
     override val sizes = {
-      var sizes: scala.Array[Int] = scala.Array(2)
+      var sizes: scala.Array[Int] = new scala.Array(2)
       val lateralDim = 1 - chainDim
       val (vFirst, vRest) = (subviews.head, subviews.tail)
+      for (dim <- scala.List(0, 1))
+        sizes(dim) = vFirst.sizes.productElement(dim).asInstanceOf[Int]
       for (v <- vRest) {
         sizes(chainDim) += v.sizes.productElement(chainDim).asInstanceOf[Int]
         require(v.sizes.productElement(lateralDim) ==
@@ -133,6 +155,11 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       }
     }
     override private[scalaviews] val t = manifest[T]
+    override protected def append0(dim: Int, that: ViewS[T]) = that match {
+      case Chain(chainDim2, subviews2) if chainDim == chainDim2 =>
+        new Chain(chainDim2, subviews2 :+ that)
+      case _ => super.append0(dim, that)
+    }
     private def binSearchS(lo: Int, hi: Int,
       lateralInd: Rep[Int]//, f: Rep[DimEntry => Unit]
     ): Rep[Tuple2[Int, Int]] = {
