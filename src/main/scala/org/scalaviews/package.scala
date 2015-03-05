@@ -37,6 +37,7 @@ package object scalaviews {
 
   // helper for providing reusable thread-safe singleton factories
   private[scalaviews] trait ViewFactoryProvider[F <: ViewFactory] {
+    type Factory = F
     def Factory = factory.get() // calling reset would break shared staged code
 
     protected def mkFactory: F
