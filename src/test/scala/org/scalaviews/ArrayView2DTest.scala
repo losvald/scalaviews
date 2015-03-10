@@ -61,6 +61,35 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
       4, 5, 6, 7, 8, 9)
   }
 
+  test("foreach2 - col vector") {
+    val v235 = Factory.vector(true, 6, (2, 2000), (3, 30), (5, 500))
+    v235.sizes must be ((6, 1))
+    assert(foreachEntryOutput(v235) === """
+2000 @ 2,0
+30 @ 3,0
+500 @ 5,0""")
+    v235.indexes(0) must contain theSameElementsInOrderAs Array(
+      0, 0, 0)
+    v235.indexes(1) must contain theSameElementsInOrderAs Array(
+      2, 3, 5)
+    v235.values(0) must contain theSameElementsInOrderAs Array(
+      2000, 30, 500)
+    v235.values(1) must contain theSameElementsInOrderAs Array(
+      2000, 30, 500)
+    v235.valueCount must be (3)
+  }
+
+  test("multByVector") {
+    val d456 = Factory.diag(Array(4, 5, 6))
+    val d789 = Factory.diag(Array(7, 8, 9))
+    val spMat = d456.along(1) :+ d789
+    val vRes = spMat.multByVector(Seq(0, 0, 2000, 30, 0, 500))
+    vRes must contain theSameElementsInOrderAs Array(
+      7 * 30,
+      0,
+      6 * 2000 + 9 * 500)
+  }
+
   private def foreachEntryOutput[T](v: ArrayView2D[T]): String = {
     val ps = new java.io.ByteArrayOutputStream
     Console.withOut(ps) { v.foreachEntryPrint() }

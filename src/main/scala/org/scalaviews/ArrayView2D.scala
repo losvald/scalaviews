@@ -23,6 +23,8 @@ package org.scalaviews
 
 import scala.virtualization.lms.common._
 
+import scala.collection.SortedMap
+
 private[scalaviews] trait ArrayView2DLike[T, +This <: ArrayView2D[T]] {
     // extends ((Int, Int) => T) {
   val sizes: (Int, Int)
@@ -40,6 +42,10 @@ trait ArrayView2D[@specialized(Int, Double) T]
   def values(dim: Int): Array[T]
   def dimEntries(dim: Int): Array[DimEntry]
   val valueCount: Int
+
+  // TODO: return a 1D view if dense or SparseVector otherwise
+  def multByVector(values: Seq[T])(implicit n: Numeric[T]): Array[T]
+
   private[scalaviews] def foreachEntryPrint(): Unit
   protected[scalaviews] val depth: Int = 0
   def along(dim: Int) = if (dim == 0) DimOp0 else DimOp1
@@ -70,6 +76,13 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     chainDim: Int,
     subviews: ViewS[T]*
   ): ArrayView2D[T] = new Chain(chainDim, subviews.toIndexedSeq)
+  def vector[T: Manifest](
+    col: Boolean, length: Int, entries: (Int, T)*
+  ): ArrayView2D[T] =
+    new SparseVector(
+      if (col) 1 else 0,
+      length,
+      SortedMap(entries: _*))
 
   private[scalaviews] trait ViewS[T] extends ArrayView2D[T]
       with ArrayView2DLike[T, ViewS[T]] {
@@ -89,6 +102,14 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       if (dim == 0) valuesC0() else valuesC1()
     override def dimEntries(dim: Int): Array[DimEntry] =
       if (dim == 0) dimEntriesC0() else dimEntriesC1()
+    override def multByVector(values: Seq[T])(
+      implicit n: Numeric[T]
+    ): Array[T] = {
+      require(sizes._2 == values.size)
+      // XXX: this should be lazily evaluated and cached (see below)
+      val multByVectorC = compile(multByVectorS)
+      multByVectorC(values.toArray)
+    }
 
     private[scalaviews] lazy val indexesC0 = compile { u: Rep[Unit] =>
       indexesS(0)
@@ -117,6 +138,14 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] def dimEntriesS(dim: Int): Rep[Array[DimEntry]] =
       arrayTabulate2S(dim) { e: Rep[DimEntry] => e }
 
+    // TODO: could not find implicit value for parameter n: Numeric[T]
+    // private[scalaviews] lazy val multByVectorC = compile(multByVectorS)
+    private[scalaviews] def multByVectorS(values: Rep[Array[T]])(
+      implicit n: Numeric[T]
+    ) = arraySumMappedS(0) { de: Rep[DimEntry] =>
+      de._2 * values(de._1)
+    }
+
     private[scalaviews] final lazy val foreachC0 = compile(foreachS(0))
     private[scalaviews] final lazy val foreachC1 = compile(foreachS(1))
     private[scalaviews] def foreachS(dim: Int)(
@@ -128,6 +157,21 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] implicit val t: Manifest[T]
     protected def append0(dim: Int, that: ViewS[T]) =
       chain(dim, this, that)
+
+    private def arraySumMappedS(dim: Int)(f: Rep[DimEntry] => Rep[T])(
+      implicit n: Numeric[T]
+    ): Rep[Array[T]] = {
+      import n.mkNumericOps
+      val lateralSize = sizes.productElement(dim).asInstanceOf[Int]
+      val a: Rep[Array[T]] = NewArray[T](lateralSize)
+      foreachEntryS { e: Rep[Entry] =>
+        val (lateralInd, nonLateralInd) = (
+          if (dim == 0) (e._1, e._2) else (e._2, e._1))
+        // TODO: += gives compilation error: not found: value ev$2
+        a(lateralInd) = a(lateralInd) + f((nonLateralInd, e._3))
+      }
+      a
+    }
 
     private def arrayTabulate2S[A: Manifest](dim: Int)(
       f: Rep[DimEntry] => Rep[A]
@@ -163,6 +207,53 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       f: Rep[Entry] => Rep[Unit]): Rep[Unit] = {}
     final override private[scalaviews] val t = manifest[Any]
     final override protected def append0(dim: Int, that: ViewS[Any]) = that
+  }
+
+  private[scalaviews] case class SparseVector[T: Manifest](
+    dim: Int,
+    length: Int,
+    valueMap: SortedMap[Int, T]
+  ) extends ViewS[T] {
+    override val sizes = if (dim == 0) (1, length) else (length, 1)
+    override val valueCount = valueMap.size
+
+    // TODO: is the following faster than using foreach2S (for gen. Scala code)?
+    override def indexes(dim: Int) =
+      if (dim == this.dim) indexesNonLateral else indexesLateral
+    override def values(dim: Int) = values0
+    private[scalaviews] lazy val indexesNonLateral =
+      valueMap.keys.toArray
+    private[scalaviews] lazy val indexesLateral =
+      new scala.Array[Int](valueCount)
+    override private[scalaviews] def indexesS(dim: Int) =
+      staticData(indexes(dim))
+    private[scalaviews] lazy val values0 = valueMap.values.toArray
+    override private[scalaviews] def valuesS(dim: Int) = staticData(values(dim))
+
+    override private[scalaviews] def foreachS(dim: Int)(
+      arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = ??? // TODO: implement
+    override private[scalaviews] def foreach2S(dim: Int)(
+      f: Rep[DimEntry] => Rep[Unit]): Rep[Unit] = {
+      // TODO: unroll for-loops only if the map is small
+      if (dim == this.dim)
+        for ((ind, value) <- valueMap)
+          f((ind: Rep[Int], staticData(value)))
+      else {
+        for (value <- valueMap.values)
+          f((0: Rep[Int], staticData(value)))
+      }
+    }
+    override private[scalaviews] def foreachEntryS(
+      f: Rep[Entry] => Rep[Unit]
+    ): Rep[Unit] = {
+      foreach2S(this.dim) { de: Rep[DimEntry] => f(
+        if (this.dim == 0)
+          (0: Rep[Int], de._1, de._2)
+        else
+          (de._1, 0: Rep[Int], de._2))
+      }
+    }
+    override private[scalaviews] val t = manifest[T]
   }
 
   private[scalaviews] case class Diag[T: Manifest](a: Array[T])
