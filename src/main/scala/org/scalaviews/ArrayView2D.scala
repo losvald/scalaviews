@@ -82,11 +82,11 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       val arg = (lateralInd, f)
       if (dim == 0) foreachC0(arg) else foreachC1(arg)
     }
-    override final def indexes(dim: Int): Array[Int] =
+    override def indexes(dim: Int): Array[Int] =
       if (dim == 0) indexesC0() else indexesC1()
-    override final def values(dim: Int): Array[T] =
+    override def values(dim: Int): Array[T] =
       if (dim == 0) valuesC0() else valuesC1()
-    override final def dimEntries(dim: Int): Array[DimEntry] =
+    override def dimEntries(dim: Int): Array[DimEntry] =
       if (dim == 0) dimEntriesC0() else dimEntriesC1()
 
     private[scalaviews] lazy val indexesC0 = compile { u: Rep[Unit] =>
@@ -180,10 +180,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       f: Rep[DimEntry] => Rep[Unit]
     ): Rep[Unit] = {
       val aS = staticData(a)
-      for (ind <- Range(0, a.length)) {
-        // FIXME: raises error: Tuple2IntInt cannot be cast to scala.Tuple2
+      for (ind <- Range(0, a.length))
         f((ind: Rep[Int], aS(ind)))
-      }
       unit()
     }
     override private[scalaviews] val t = manifest[T]
@@ -240,22 +238,17 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       }
     }
     override private[scalaviews] def foreach2S(dim: Int)(
-      f: Rep[DimEntry] => Rep[Unit]): Rep[Unit] = {
+      f: Rep[DimEntry] => Rep[Unit]
+    ): Rep[Unit] = {
       if (dim == chainDim) {
         var nonLateralInd: Int = 0
         for (v <- subviews) {
           v.foreach2S(dim) { e: Rep[DimEntry] =>
-            // TODO: compute globInd statically
-            val globInd = e._1 + nonLateralInd
-            f((globInd, e._2))
-            unit()
+            f((e._1 + nonLateralInd, e._2))
           }
-          // v.foreach2S(dim)(f) // also triggers the ClassCastException above
           nonLateralInd += v.sizes.productElement(chainDim).asInstanceOf[Int]
         }
-      } else {
-        // TODO:
-      }
+      } else subviews.foreach(_.foreach2S(dim)(f(_)))
     }
     override private[scalaviews] val t = manifest[T]
     override protected def append0(dim: Int, that: ViewS[T]) = that match {

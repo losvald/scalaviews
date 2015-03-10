@@ -54,6 +54,18 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
 7 @ 3
 8 @ 4
 9 @ 5""")
+    assert(foreach2Output(c0D456D789, 1) === """
+4 @ 0
+5 @ 1
+6 @ 2
+7 @ 0
+8 @ 1
+9 @ 2""")
+
+    c0D456D789.indexes(1) must contain theSameElementsInOrderAs Array(
+      0, 1, 2, 0, 1, 2)
+    c0D456D789.values(1) must contain theSameElementsInOrderAs Array(
+      4, 5, 6, 7, 8, 9)
   }
 
   private def foreach2Output[T](v: ArrayView2D[T], dim: Int): String = {

@@ -39,11 +39,10 @@ class ArrayView2DCodetest extends FunSuite with MustMatchers
   implicit def view2ViewS[T: Manifest](v: ArrayView2D[T]): Factory#ViewS[T] =
     v.asInstanceOf[Factory#ViewS[T]]
 
-    // """val (x\d+) = new Array\[[a-zA-z]\]\((\d+)\)"""
-  private def mkIndexesCNonLateralRegex[T](inds: Int*) =
+  private def mkIndexesCRegex[T](inds: Int*) =
     ("""val (x\d+) = new Array\[Int\]\(""" + inds.size + """\)""" +
       ("" /: inds.zipWithIndex) { (s, e) => s + """
-val .* \1\(""" + e._1 + """\) = """ + e._2
+val .* \1\(""" + e._2 + """\) = """ + e._1
     } + """
 \1""")
 
@@ -51,9 +50,11 @@ val .* \1\(""" + e._1 + """\) = """ + e._2
     val d456 = Factory.diag(Array(4, 5, 6))
     val d789 = Factory.diag(Array(7, 8, 9))
     val c0D456D789 = (d456.along(0) :+ d789)
-    (c0D456D789.indexesC0.body.toString) must fullyMatch regex (
-      mkIndexesCNonLateralRegex(0, 1, 2, 3, 4, 5))
+    c0D456D789.indexesC0.body must fullyMatch regex mkIndexesCRegex(
+      0, 1, 2, 3, 4, 5)
     // println(c0D456D789.valuesC0.body)
     // println(c0D456D789.dimEntriesC0.body) // TODO: uncomment after fix
+    c0D456D789.indexesC1.body must fullyMatch regex mkIndexesCRegex(
+      0, 1, 2, 0, 1, 2)
   }
 }
