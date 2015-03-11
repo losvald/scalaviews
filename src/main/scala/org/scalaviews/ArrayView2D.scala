@@ -33,13 +33,14 @@ private[scalaviews] trait ArrayView2DLike[T, +This <: ArrayView2D[T]] {
 trait ArrayView2D[@specialized(Int, Double) T]
     extends ArrayView2DLike[T, ArrayView2D[T]] {
   type DimEntry = (Int, T)
+  type Entry = (Int, Int, T)
   def append(dim: Int, other: ArrayView2D[T]): ArrayView2D[T]
   def foreach(dim: Int, lateralInd: Int, f: DimEntry => Unit): Unit
   def indexes(dim: Int): Array[Int]
   def values(dim: Int): Array[T]
   def dimEntries(dim: Int): Array[DimEntry]
   val valueCount: Int
-  private[scalaviews] def foreach2Print(dim: Int): Unit
+  private[scalaviews] def foreachEntryPrint(): Unit
   protected[scalaviews] val depth: Int = 0
   def along(dim: Int) = if (dim == 0) DimOp0 else DimOp1
   case class DimOp(dim: Int) {
@@ -123,6 +124,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
 
     private[scalaviews] def foreach2S(dim: Int)(
       f: Rep[DimEntry] => Rep[Unit]): Rep[Unit]
+    private[scalaviews] def foreachEntryS(f: Rep[Entry] => Rep[Unit]): Rep[Unit]
     private[scalaviews] implicit val t: Manifest[T]
     protected def append0(dim: Int, that: ViewS[T]) =
       chain(dim, this, that)
@@ -140,17 +142,13 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     }
 
     // TODO: remove (for now, used in the testing code)
-    override private[scalaviews] final def foreach2Print(dim: Int): Unit = {
-      if (dim == 0) foreach2PrintC0() else foreach2PrintC1()
+    override private[scalaviews] final def foreachEntryPrint() =
+      foreachEntryPrintC()
+    private[scalaviews] lazy val foreachEntryPrintC = compile {
+      u: Rep[Unit] => foreachEntryS(printEntryS)
     }
-    private[scalaviews] lazy val foreach2PrintC0 = compile {
-      u: Rep[Unit] => foreach2S(0)(printEntryS)
-    }
-    private[scalaviews] lazy val foreach2PrintC1 = compile {
-      u: Rep[Unit] => foreach2S(1)(printEntryS)
-    }
-    private def printEntryS(e: Rep[DimEntry]): Rep[Unit] =
-      print("\n" + e._2 + " @ " + e._1)
+    private def printEntryS(e: Rep[Entry]): Rep[Unit] =
+      print("\n" + e._3 + " @ " + e._1 + "," + e._2)
   }
 
   private case object Empty extends ViewS[Any] {
@@ -161,6 +159,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = {}
     final override private[scalaviews] def foreach2S(dim: Int)(
       f: Rep[DimEntry] => Rep[Unit]): Rep[Unit] = {}
+    final override private[scalaviews] def foreachEntryS(
+      f: Rep[Entry] => Rep[Unit]): Rep[Unit] = {}
     final override private[scalaviews] val t = manifest[Any]
     final override protected def append0(dim: Int, that: ViewS[Any]) = that
   }
@@ -184,6 +184,13 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
         f((ind: Rep[Int], aS(ind)))
       unit()
     }
+    override private[scalaviews] def foreachEntryS(
+      f: Rep[Entry] => Rep[Unit]
+    ): Rep[Unit] = {
+      foreach2S(0) { de: Rep[DimEntry] =>
+        f((de._1, de._1, de._2))
+      }
+    }
     override private[scalaviews] val t = manifest[T]
     override protected def append0(dim: Int, that: ViewS[T]) =
       chain(dim, this, that)
@@ -199,6 +206,9 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     ): Rep[Unit] = {}
     private[scalaviews] def foreach2S(dim: Int)(
       f: Rep[DimEntry] => Rep[Unit]): Rep[Unit] = {}
+    override private[scalaviews] def foreachEntryS(
+      f: Rep[Entry] => Rep[Unit]
+    ): Rep[Unit] = {}
     override private[scalaviews] val t = manifest[T]
   }
 
@@ -249,6 +259,19 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
           nonLateralInd += v.sizes.productElement(chainDim).asInstanceOf[Int]
         }
       } else subviews.foreach(_.foreach2S(dim)(f(_)))
+    }
+    override private[scalaviews] def foreachEntryS(
+      f: Rep[Entry] => Rep[Unit]
+    ): Rep[Unit] = {
+      var nonLateralInd: Int = 0
+      for (v <- subviews) {
+        v.foreachEntryS { e: Rep[Entry] => f((
+          e._1 + (if (chainDim == 0) nonLateralInd else 0),
+          e._2 + (if (chainDim == 0) 0 else nonLateralInd),
+          e._3))
+        }
+        nonLateralInd += v.sizes.productElement(chainDim).asInstanceOf[Int]
+      }
     }
     override private[scalaviews] val t = manifest[T]
     override protected def append0(dim: Int, that: ViewS[T]) = that match {

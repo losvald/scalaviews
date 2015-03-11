@@ -47,20 +47,13 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
     // TODO: uncomment when dimEntries is fixed, and get rid of assert below
     // c0D456D789.dimEntries(0) must contain theSameElementsInOrderAs Array(
     //   (0, 4), (1, 5), (2, 6), (3, 7), (4, 8), (5, 9))
-    assert(foreach2Output(c0D456D789, 0) === """
-4 @ 0
-5 @ 1
-6 @ 2
-7 @ 3
-8 @ 4
-9 @ 5""")
-    assert(foreach2Output(c0D456D789, 1) === """
-4 @ 0
-5 @ 1
-6 @ 2
-7 @ 0
-8 @ 1
-9 @ 2""")
+    assert(foreachEntryOutput(c0D456D789) === """
+4 @ 0,0
+5 @ 1,1
+6 @ 2,2
+7 @ 3,0
+8 @ 4,1
+9 @ 5,2""")
 
     c0D456D789.indexes(1) must contain theSameElementsInOrderAs Array(
       0, 1, 2, 0, 1, 2)
@@ -68,9 +61,9 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
       4, 5, 6, 7, 8, 9)
   }
 
-  private def foreach2Output[T](v: ArrayView2D[T], dim: Int): String = {
+  private def foreachEntryOutput[T](v: ArrayView2D[T]): String = {
     val ps = new java.io.ByteArrayOutputStream
-    Console.withOut(ps) { v.foreach2Print(dim) }
+    Console.withOut(ps) { v.foreachEntryPrint() }
     ps.toString
   }
 }
