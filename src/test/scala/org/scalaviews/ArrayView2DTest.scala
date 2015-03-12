@@ -61,6 +61,39 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
       4, 5, 6, 7, 8, 9)
   }
 
+  test("foreach2 - block diag") {
+    val A = Array
+    val bd3by2 = Factory.blockDiag(A(
+      A(
+        A(0, 10, 20),
+        A(30, 40, 50)),
+      A(
+        A(66, 77, 88),
+        A(99, 100, 101)),
+      A(
+        A(120, 130, 140),
+        A(150, 160, 170))))
+    assert(foreachEntryOutput(bd3by2) === """
+0 @ 0,0
+10 @ 0,1
+20 @ 0,2
+30 @ 1,0
+40 @ 1,1
+50 @ 1,2
+66 @ 2,3
+77 @ 2,4
+88 @ 2,5
+99 @ 3,3
+100 @ 3,4
+101 @ 3,5
+120 @ 4,6
+130 @ 4,7
+140 @ 4,8
+150 @ 5,6
+160 @ 5,7
+170 @ 5,8""")
+  }
+
   test("foreach2 - col vector") {
     val v235 = Factory.vector(true, 6, (2, 2000), (3, 30), (5, 500))
     v235.sizes must be ((6, 1))

@@ -72,6 +72,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   def empty[T: Manifest] = Empty.asInstanceOf[ViewS[T]]
   def diag[T: Manifest](values: Array[T]): ArrayView2D[T] =
     new Diag[T](values)
+  def blockDiag[T: Manifest](blocks: Array[Array[Array[T]]]): ArrayView2D[T] =
+    new BlockDiag[T](blocks)
   def chain[T: Manifest](
     chainDim: Int,
     subviews: ViewS[T]*
@@ -274,8 +276,37 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       }
     }
     override private[scalaviews] val t = manifest[T]
-    override protected def append0(dim: Int, that: ViewS[T]) =
-      chain(dim, this, that)
+  }
+
+  private[scalaviews] case class BlockDiag[T: Manifest](
+    blocks: Array[Array[Array[T]]]
+  ) extends ViewS[T] {
+    require(blocks.size > 0)
+    val blockSizes: Sizes = {
+      // TODO: ensure all blocks match in their dimensions
+      (blocks(0).size, blocks(0)(0).size)
+    }
+    override val sizes = {
+      (blockSizes._1 * blocks.size, blockSizes._2 * blocks.size)
+    }
+    override val valueCount = blocks.size * blockSizes._1 * blockSizes._2
+    override private[scalaviews] def foreachS(dim: Int)(
+      arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = ??? // TODO: implement
+    override private[scalaviews] def foreachEntryS(
+      f: Rep[Entry] => Rep[Unit]
+    ): Rep[Unit] = {
+      blocks.zipWithIndex.foreach { case (b, bInd) =>
+        b.zipWithIndex.foreach { case (bRow, bRowInd) =>
+          bRow.zipWithIndex.foreach { case (value, bColInd) =>
+            f((
+              bRowInd + bInd * blockSizes._1: Rep[Int],
+              bColInd + bInd * blockSizes._2: Rep[Int],
+              staticData(value))) // TODO: stage the whole block
+          }
+        }
+      }
+    }
+    override private[scalaviews] val t = manifest[T]
   }
 
   private[scalaviews] case class Implicit[T: Manifest](
