@@ -152,7 +152,12 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit]
 
     private[scalaviews] def foreach2S(dim: Int)(
-      f: Rep[DimEntry] => Rep[Unit]): Rep[Unit]
+      f: Rep[DimEntry] => Rep[Unit]
+    ): Rep[Unit] = {
+      foreachEntryS { e: Rep[Entry] =>
+        f((e.productElement(dim).asInstanceOf[Rep[Int]], e._3: Rep[T]))
+      }
+    }
     private[scalaviews] def foreachEntryS(f: Rep[Entry] => Rep[Unit]): Rep[Unit]
     private[scalaviews] implicit val t: Manifest[T]
     protected def append0(dim: Int, that: ViewS[T]) =
@@ -201,8 +206,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     // staged methods will not be called, so they can return anything
     final override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = {}
-    final override private[scalaviews] def foreach2S(dim: Int)(
-      f: Rep[DimEntry] => Rep[Unit]): Rep[Unit] = {}
     final override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]): Rep[Unit] = {}
     final override private[scalaviews] val t = manifest[Any]
@@ -232,25 +235,19 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
 
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = ??? // TODO: implement
-    override private[scalaviews] def foreach2S(dim: Int)(
-      f: Rep[DimEntry] => Rep[Unit]): Rep[Unit] = {
-      // TODO: unroll for-loops only if the map is small
-      if (dim == this.dim)
-        for ((ind, value) <- valueMap)
-          f((ind: Rep[Int], staticData(value)))
-      else {
-        for (value <- valueMap.values)
-          f((0: Rep[Int], staticData(value)))
-      }
-    }
     override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]
     ): Rep[Unit] = {
-      foreach2S(this.dim) { de: Rep[DimEntry] => f(
-        if (this.dim == 0)
-          (0: Rep[Int], de._1, de._2)
-        else
-          (de._1, 0: Rep[Int], de._2))
+      val (getInd0, getInd1) = {
+        def f0(ind: Int): Rep[Int] = 0
+        def fInd(ind: Int): Rep[Int] = ind
+        if (dim == 0) (f0 _, fInd _) else (fInd _ , f0 _)
+      }
+      def mkRepEntry(e: (Int, T)) =
+        (getInd0(e._1), getInd1(e._1), staticData(e._2))
+      // TODO: unroll for-loops only if the map is small
+      valueMap.foreach { e =>
+        f(mkRepEntry(e))
       }
     }
     override private[scalaviews] val t = manifest[T]
@@ -267,19 +264,13 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       val lateralInd = arg._1; val f = arg._2
       f((lateralInd, staticData(a).apply(lateralInd)))
     }
-    override private[scalaviews] def foreach2S(dim: Int)(
-      f: Rep[DimEntry] => Rep[Unit]
-    ): Rep[Unit] = {
-      val aS = staticData(a)
-      for (ind <- Range(0, a.length))
-        f((ind: Rep[Int], aS(ind)))
-      unit()
-    }
     override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]
     ): Rep[Unit] = {
-      foreach2S(0) { de: Rep[DimEntry] =>
-        f((de._1, de._1, de._2))
+      val aS = staticData(a)
+      for (ind <- Range(0, a.length)) {
+        val indS: Rep[Int] = ind
+        f((indS, indS, aS(ind)))
       }
     }
     override private[scalaviews] val t = manifest[T]
@@ -295,8 +286,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]
     ): Rep[Unit] = {}
-    private[scalaviews] def foreach2S(dim: Int)(
-      f: Rep[DimEntry] => Rep[Unit]): Rep[Unit] = {}
     override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]
     ): Rep[Unit] = {}
