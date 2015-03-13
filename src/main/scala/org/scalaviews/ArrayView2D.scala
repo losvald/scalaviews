@@ -69,6 +69,12 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     with ObjectOps
 {
 
+  def impl[T: Manifest](sizes: Sizes, f: Sizes => T): ArrayView2D[T] =
+    new Implicit(f, sizes)
+  def impl[T: Manifest](sizes: Sizes, value: T): ArrayView2D[T] = {
+    val const = scala.Array(value).apply(0)
+    impl(sizes, inds => const)
+  }
   def empty[T: Manifest] = Empty.asInstanceOf[ViewS[T]]
   def diag[T: Manifest](values: Array[T]): ArrayView2D[T] =
     new Diag[T](values)
@@ -76,8 +82,12 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     new BlockDiag[T](blocks)
   def chain[T: Manifest](
     chainDim: Int,
-    subviews: ViewS[T]*
-  ): ArrayView2D[T] = new Chain(chainDim, subviews.toIndexedSeq)
+    subviews: ArrayView2D[T]*
+  ): ArrayView2D[T] = {
+    // XXX: assume all subviews are staged (i.e., they mix-in the ViewS trait)
+    new Chain(chainDim,
+      subviews.toIndexedSeq.asInstanceOf[IndexedSeq[ViewS[T]]])
+  }
   def vector[T: Manifest](
     col: Boolean, length: Int, entries: (Int, T)*
   ): ArrayView2D[T] =
