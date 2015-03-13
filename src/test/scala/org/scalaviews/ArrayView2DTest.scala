@@ -126,14 +126,8 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
   // http://www.cise.ufl.edu/research/sparse/matrices/Meszaros/p0040.html
   lazy val p0040_cdd = {
     val A = Array
-    val fourOnes = A(1, 1, 1, 1)
-    val fourMinusOnes = A(-1, -1, -1, -1)
-    val bd2x4 = Factory.blockDiag(A(
-      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
-      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
-      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
-      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
-      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes)))
+    val d2x4Block = A(A(-1, -1, -1, -1), A(1, 1, 1, 1))
+    val bd2x4 = Factory.blockDiag(A.fill(10)(d2x4Block))
     bd2x4.sizes must be ((20, 40))
     val e1 = Factory.impl((3, 1), 0)
     val cd3x3e1 = Factory.chain(1,
