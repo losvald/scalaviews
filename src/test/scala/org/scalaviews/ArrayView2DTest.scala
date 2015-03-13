@@ -123,6 +123,45 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
       6 * 2000 + 9 * 500)
   }
 
+  // http://www.cise.ufl.edu/research/sparse/matrices/Meszaros/p0040.html
+  lazy val p0040_cdd = {
+    val A = Array
+    val fourOnes = A(1, 1, 1, 1)
+    val fourMinusOnes = A(-1, -1, -1, -1)
+    val bd2x4 = Factory.blockDiag(A(
+      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
+      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
+      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
+      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes),
+      A(fourMinusOnes, fourOnes), A(fourMinusOnes, fourOnes)))
+    bd2x4.sizes must be ((20, 40))
+    val e1 = Factory.impl((3, 1), 0)
+    val cd3x3e1 = Factory.chain(1,
+      Factory.diag(A.fill(3)(-1669)), e1,
+      Factory.diag(A.fill(3)(-2191)), e1,
+      Factory.diag(A.fill(3)(-1553)), e1,
+      Factory.diag(A.fill(3)(-1829)), e1,
+      Factory.diag(A.fill(3)(-1772)), e1,
+      Factory.diag(A.fill(3)(-1665)), e1,
+      Factory.diag(A.fill(3)(-2220)), e1,
+      Factory.diag(A.fill(3)(-1634)), e1,
+      Factory.diag(A.fill(3)(-2211)), e1,
+      Factory.diag(A.fill(3)(-2142)), e1)
+    cd3x3e1.sizes must be ((3, 40))
+    val cbd2x4cd3x3e1 = bd2x4.along(0) :+ cd3x3e1
+    cbd2x4cd3x3e1.sizes must be ((23, 40))
+    val cdcbd2x4cd3x3e1 = Factory.diag(A.fill(23)(1)).along(1) :+ cbd2x4cd3x3e1
+    cdcbd2x4cd3x3e1.sizes must be ((23, 63))
+    cdcbd2x4cd3x3e1
+  }
+
+  test("multByVector - nested chain of (block) diags") {
+    val spMat = p0040_cdd
+    val act = spMat.multByVector(Array(60,-42,-54,44,62,23,-23,-15,73,51,50,-15,11,-14,-73,-28,-88,-70,-76,88,-92,84,-79,57,-55,23,43,-93,12,31,-98,-74,-86,-41,94,-28,14,-45,-60,-86,-50,-70,49,-68,-61,88,16,-26,94,-90,70,48,-52,-40,-1,-59,24,97,66,79,-69,52,-97))
+    val exp = Array(-8,26,94,-104,169,-84,96,-134,230,-106,75,-40,-37,34,-28,-73,-216,58,-41,53,480803,334726,-43580)
+    act must contain theSameElementsInOrderAs exp
+  }
+
   private def foreachEntryOutput[T](v: ArrayView2D[T]): String = {
     val ps = new java.io.ByteArrayOutputStream
     Console.withOut(ps) { v.foreachEntryPrint() }
