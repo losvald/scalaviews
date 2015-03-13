@@ -118,9 +118,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       implicit n: Numeric[T]
     ): Array[T] = {
       require(sizes._2 == values.size)
-      // XXX: this should be lazily evaluated and cached (see below)
-      val multByVectorC = compile(multByVectorS)
-      multByVectorC(values.toArray)
+      multByVectorC(n)(values.toArray)
     }
 
     private[scalaviews] lazy val indexesC0 = compile { u: Rep[Unit] =>
@@ -150,8 +148,21 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] def dimEntriesS(dim: Int): Rep[Array[DimEntry]] =
       arrayTabulate2S(dim) { e: Rep[DimEntry] => e }
 
-    // TODO: could not find implicit value for parameter n: Numeric[T]
-    // private[scalaviews] lazy val multByVectorC = compile(multByVectorS)
+    // TODO: lazy val: could not find implicit value for parameter n: Numeric[T]
+    private type MultByVector = Array[T] => Array[T]
+    @volatile private var _multByVectorC: MultByVector = _
+    private[scalaviews] def multByVectorC(implicit n: Numeric[T]) = {
+      var fC: MultByVector = _multByVectorC
+      if (fC == null) {
+        synchronized {
+          if (_multByVectorC == null) {
+            fC = compile(multByVectorS)
+            _multByVectorC = fC
+          }
+        }
+      }
+      fC
+    }
     private[scalaviews] def multByVectorS(values: Rep[Array[T]])(
       implicit n: Numeric[T]
     ) = arraySumMappedS(0) { de: Rep[DimEntry] =>
