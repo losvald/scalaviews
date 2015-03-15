@@ -37,6 +37,7 @@ trait ArrayView2D[@specialized(Int, Double) T]
   type DimEntry = (Int, T)
   type Entry = (Int, Int, T)
   def append(dim: Int, other: ArrayView2D[T]): ArrayView2D[T]
+  def apply(row: Int, col: Int): T
   def foreach(dim: Int, lateralInd: Int, f: DimEntry => Unit): Unit
   def indexes(dim: Int): Array[Int]
   def values(dim: Int): Array[T]
@@ -76,10 +77,14 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     impl(sizes, inds => const)
   }
   def empty[T: Manifest] = Empty.asInstanceOf[ViewS[T]]
-  def diag[T: Manifest](values: Array[T]): ArrayView2D[T] =
-    new Diag[T](values)
-  def blockDiag[T: Manifest](blocks: Array[Array[Array[T]]]): ArrayView2D[T] =
-    new BlockDiag[T](blocks)
+  def diag[T: Manifest](
+    values: Array[T],
+    defaultValue: Option[T] = None
+  ): ArrayView2D[T] = new Diag[T](values, mkDefaultValue(defaultValue))
+  def blockDiag[T: Manifest](
+    blocks: Array[Array[Array[T]]],
+    defaultValue: Option[T] = None
+  ): ArrayView2D[T] = new BlockDiag[T](blocks, mkDefaultValue(defaultValue))
   def chain[T: Manifest](
     chainDim: Int,
     subviews: ArrayView2D[T]*
@@ -89,11 +94,12 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       subviews.toIndexedSeq.asInstanceOf[IndexedSeq[ViewS[T]]])
   }
   def vector[T: Manifest](
-    col: Boolean, length: Int, entries: (Int, T)*
+    col: Boolean, length: Int, defaultValue: T, entries: (Int, T)*
   ): ArrayView2D[T] =
     new SparseVector(
       if (col) 1 else 0,
       length,
+      defaultValue,
       SortedMap(entries: _*))
 
   private[scalaviews] trait ViewS[T] extends ArrayView2D[T]
@@ -102,6 +108,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       case that: ViewS[T] => this.append0(dim, that)
       case _ => ??? // TODO: that.prepend0(this)
     }
+    override final def apply(row: Int, col: Int): T = applyC(row, col)
     override final def foreach(
       dim: Int, lateralInd: Int, f: DimEntry => Unit
     ): Unit = {
@@ -169,6 +176,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       de._2 * values(de._1)
     }
 
+    private[scalaviews] final lazy val applyC = compile(applyS)
+    private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T]
     private[scalaviews] final lazy val foreachC0 = compile(foreachS(0))
     private[scalaviews] final lazy val foreachC1 = compile(foreachS(1))
     private[scalaviews] def foreachS(dim: Int)(
@@ -227,6 +236,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     final override val sizes = (0, 0)
     final override val valueCount = 0
     // staged methods will not be called, so they can return anything
+    final override private[scalaviews] def applyS(inds: Rep[(Int, Int)]) = 0
     final override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = {}
     final override private[scalaviews] def foreachEntryS(
@@ -238,6 +248,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   private[scalaviews] case class SparseVector[T: Manifest](
     dim: Int,
     length: Int,
+    defaultValue: T,
     valueMap: SortedMap[Int, T]
   ) extends ViewS[T] {
     override val sizes = if (dim == 0) (1, length) else (length, 1)
@@ -256,6 +267,9 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] lazy val values0 = valueMap.values.toArray
     override private[scalaviews] def valuesS(dim: Int) = staticData(values(dim))
 
+    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
+      staticData(defaultValue) // TODO: implement
+    }
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = ??? // TODO: implement
     override private[scalaviews] def foreachEntryS(
@@ -276,10 +290,15 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override private[scalaviews] val t = manifest[T]
   }
 
-  private[scalaviews] case class Diag[T: Manifest](a: Array[T])
-      extends ViewS[T] {
+  private[scalaviews] case class Diag[T: Manifest](
+    a: Array[T],
+    defaultValue: T
+  ) extends ViewS[T] {
     override val sizes = (a.length, a.length)
     override val valueCount = a.length
+    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] =
+      if (inds._1 == inds._2) staticData(a).apply(inds._1)
+      else staticData(defaultValue)
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]
     ): Rep[Unit] = {
@@ -300,7 +319,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   }
 
   private[scalaviews] case class BlockDiag[T: Manifest](
-    blocks: Array[Array[Array[T]]]
+    blocks: Array[Array[Array[T]]],
+    defaultValue: T // = new scala.Array[T](1)(0) // TODO: cannot find class tag
   ) extends ViewS[T] {
     require(blocks.size > 0)
     val blockSizes: Sizes = {
@@ -311,6 +331,16 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       (blockSizes._1 * blocks.size, blockSizes._2 * blocks.size)
     }
     override val valueCount = blocks.size * blockSizes._1 * blockSizes._2
+    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
+      val blockRow = inds._1 / blockSizes._1
+      val blockCol = inds._2 / blockSizes._2
+      if (blockRow == blockCol) {
+        staticData(blocks).apply(blockRow).apply(
+          inds._1 - blockRow * blockSizes._1).apply(
+          inds._2 - blockCol * blockSizes._2)
+      } else
+        staticData(defaultValue)
+    }
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = ??? // TODO: implement
     override private[scalaviews] def foreachEntryS(
@@ -335,6 +365,9 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override val sizes: Sizes
   ) extends ViewS[T] {
     override val valueCount = 0
+    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
+      staticData(f).apply(inds)
+    }
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]
     ): Rep[Unit] = {}
@@ -362,6 +395,9 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       new Tuple2(sizes(0), sizes(1))
     }
     override val valueCount = (0 /: subviews)(_ + _.valueCount)
+    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
+      staticData(new scala.Array(1).apply(0)) // TODO: implement
+    }
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]
     ): Rep[Unit] = {
@@ -434,6 +470,15 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   }
 
   private type Sizes = (Int, Int)
+
+  // helper function to get around the missing class tag in param list, i.e.
+  //   def fun[T : Manifest](..., defaultValue: T = new scala.Array[T](1)(0))
+  // doesn't work, but we can use this helper to provide similar usage, i.e.
+  //   def fun[T : Manifest](..., defaultValue: Option[T] = None)
+  private def mkDefaultValue[T : Manifest](o: Option[T]): T = o match {
+    case Some(defaultValue) => defaultValue
+    case _ => new scala.Array[T](1)(0)
+  }
 }
 
 object ArrayView2D extends ViewFactoryProvider[ArrayView2DFactory] {
