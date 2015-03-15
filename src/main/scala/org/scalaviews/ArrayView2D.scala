@@ -63,7 +63,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     with StaticData
     with IfThenElse
     with NumericOps with PrimitiveOps with BooleanOps
-    with Functions
+    with Functions with TupledFunctionsExp
     with Equal
     with RangeOps with OrderingOps with MiscOps with ArrayOps with StringOps
     with SeqOps with While with Variables with LiftVariables with TupleOps
@@ -160,9 +160,9 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     @volatile private var _multByVectorC: MultByVector = _
     private[scalaviews] def multByVectorC(implicit n: Numeric[T]) = {
       var fC: MultByVector = _multByVectorC
-      if (fC == null) {
+      if (fC == null.asInstanceOf[MultByVector]) {
         synchronized {
-          if (_multByVectorC == null) {
+          if (_multByVectorC == null.asInstanceOf[MultByVector]) {
             fC = compile(multByVectorS)
             _multByVectorC = fC
           }
@@ -486,6 +486,7 @@ object ArrayView2D extends ViewFactoryProvider[ArrayView2DFactory] {
 
   private[scalaviews] trait Driver extends ScalaViewExp
       with StaticDataExp with IfThenElseExpOpt
+      with TupledFunctionsExp
       with ExpOpt.BooleanAnd { self =>
     override val codegen = new Codegen
         with ScalaGenStaticData {
