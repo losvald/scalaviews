@@ -33,6 +33,18 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
   type Chain[T] = ArrayView2DFactory#Chain[T]
   type Diag[T] = ArrayView2DFactory#Diag[T]
 
+  test("apply - diag") {
+    val d = Factory.diag(Array(10, 20, 30))
+    d(0, 0) must be (10)
+    d(1, 1) must be (20)
+    d(1, 0) must be (0)
+    d(0, 2) must be (0)
+    d(2, 1) must be (0)
+    d(2, 2) must be (30)
+  }
+
+  // TODO: add tests for apply for other case classes
+
   test("foreach2 - chain of diags") {
     val d456 = Factory.diag(Array(4, 5, 6))
     val d789 = Factory.diag(Array(7, 8, 9))
@@ -95,7 +107,7 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
   }
 
   test("foreach2 - col vector") {
-    val v235 = Factory.vector(true, 6, (2, 2000), (3, 30), (5, 500))
+    val v235 = Factory.vector[Int](true, 6, 0, (2, 2000), (3, 30), (5, 500))
     v235.sizes must be ((6, 1))
     assert(foreachEntryOutput(v235) === """
 2000 @ 2,0
