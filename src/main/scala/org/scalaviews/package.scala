@@ -62,21 +62,6 @@ package object scalaviews {
     def reportOutputStream = Util.nullOutputStream
   }
 
-  private[scalaviews] object ExpOpt {
-    import scala.reflect.SourceContext
-
-    trait BooleanAnd extends BooleanOpsExpOpt {
-      override def boolean_and(lhs: Exp[Boolean], rhs: Exp[Boolean])(
-        implicit pos: SourceContext
-      ): Exp[Boolean] = (lhs, rhs) match {
-        case (Const(true), _) => rhs
-        case (_, Const(true)) => lhs
-        case (c @ Const(false), _) => c // short-circuit
-        case _ => super.boolean_and(lhs, rhs)
-      }
-    }
-  }
-
   private[scalaviews] object Util {
     val nullOutputStream = new java.io.OutputStream {
       override def write(b: Int) = {}

@@ -440,8 +440,7 @@ object ArrayView2D extends ViewFactoryProvider[ArrayView2DFactory] {
   def diag[T: Manifest](values: Array[T]) = Factory.diag(values)
 
   private[scalaviews] trait Driver extends ScalaViewExp
-      with StaticDataExp with IfThenElseExpOpt
-      with ExpOpt.BooleanAnd { self =>
+      with StaticDataExp with IfThenElseExpOpt { self =>
     override val codegen = new Codegen
         with ScalaGenStaticData {
       val IR: self.type = self
