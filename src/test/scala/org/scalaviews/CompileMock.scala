@@ -48,14 +48,13 @@ trait CompileMock extends CompileScala { this: BaseExp =>
       s.slice(s.indexOf('{') + 1, s.lastIndexOf('}')).force.trim
     }
 
-    // wrap the function in an object that behaves as a function f
-    // but also provides the "source" attribute that is lazily evaluated
-    val fC = super.compile(f)
+    // mock the function, but provide the lazily evaluated "source" attribute,
+    // as well as the parameter and result types
     new FunWithSource[A, B] {
       lazy val body = emitBody()
       val paramType = typeTag[A]
       val resultType = typeTag[B]
-      def apply(a: A) = fC(a)
+      def apply(a: A) = null.asInstanceOf[B]
     }
   }
 }

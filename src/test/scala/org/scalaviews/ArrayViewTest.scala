@@ -1047,7 +1047,6 @@ class ArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
   }
 
   test("reversed - generic") {
-    len19And23Dbl.apply(1) must be (20)
     val len19And23DblRev = len19And23Dbl.reversed
     len19And23DblRev must be (anInstanceOf[ApplyS[_]])
   }
