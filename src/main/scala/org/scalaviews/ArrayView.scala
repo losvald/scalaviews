@@ -772,13 +772,9 @@ object ArrayView extends ViewFactoryProvider[ArrayViewFactory] {
     }
   }
 
-  private[scalaviews] trait Driver extends ScalaViewExp
-      with StaticDataExp with IfThenElseExpOpt { self =>
-    override val codegen = new Codegen
-        with ScalaGenStaticData {
-      val IR: self.type = self
-    }
-  }
+  private[scalaviews] trait FactoryImpl extends ArrayViewFactory
+      with ViewExp
+      with ScalaDriver
 
-  override protected def mkFactory = new ArrayViewFactory with Driver
+  override protected def mkFactory = new FactoryImpl {}
 }

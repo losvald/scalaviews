@@ -981,8 +981,8 @@ class ArrayViewScalaCodegenTest extends FunSuite with TypeMatchers
     with BeforeAndAfterAll
     with ViewFactoryProvider[ArrayViewFactory] {
   import ArrayViewTest._
-  import ArrayView.{Factory => _, _} // mock the factory
-  def mkFactory = new ArrayViewFactory with Driver with CompileMock
+  import ArrayView._
+  def mkFactory = new FactoryImpl with CompileMock
 
   override def beforeAll() {
     Factory.reset

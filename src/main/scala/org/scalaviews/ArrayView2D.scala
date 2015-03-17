@@ -437,15 +437,9 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
 }
 
 object ArrayView2D extends ViewFactoryProvider[ArrayView2DFactory] {
-  def diag[T: Manifest](values: Array[T]) = Factory.diag(values)
+  private[scalaviews] trait FactoryImpl extends ArrayView2DFactory
+      with ViewExp
+      with ScalaDriver
 
-  private[scalaviews] trait Driver extends ScalaViewExp
-      with StaticDataExp with IfThenElseExpOpt { self =>
-    override val codegen = new Codegen
-        with ScalaGenStaticData {
-      val IR: self.type = self
-    }
-  }
-
-  override protected def mkFactory = new ArrayView2DFactory with Driver
+  override protected def mkFactory = new FactoryImpl {}
 }

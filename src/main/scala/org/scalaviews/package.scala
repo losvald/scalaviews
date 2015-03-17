@@ -47,10 +47,14 @@ package object scalaviews {
     }
   }
 
-  private[scalaviews] trait ScalaViewExp extends ScalaOpsPkgExp
-      with CompileScala { self =>
-    type Codegen = ScalaCodeGenPkg
-    val codegen = new Codegen { val IR: self.type = self }
+  private[scalaviews] trait ViewExp extends ScalaOpsPkgExp
+      with StaticDataExp with IfThenElseExpOpt
+
+  private[scalaviews] trait ScalaDriver extends CompileScala { self: ViewExp =>
+    trait Codegen extends ScalaCodeGenPkg with ScalaGenStaticData {
+      val IR: self.type = self
+    }
+    val codegen = new Codegen {}
 
     override def compile[A, B](f: Exp[A] => Exp[B])(
       implicit mA: Manifest[A], mB: Manifest[B]

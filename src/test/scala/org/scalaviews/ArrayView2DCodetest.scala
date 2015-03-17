@@ -32,8 +32,8 @@ import scala.reflect.runtime.universe._
 
 class ArrayView2DCodetest extends FunSuite with MustMatchers
     with ViewFactoryProvider[ArrayView2DFactory] {
-  import ArrayView2D.{Factory => _, _} // mock the factory
-  def mkFactory = new ArrayView2DFactory with Driver with CompileMock
+  import ArrayView2D._
+  def mkFactory = new FactoryImpl with CompileMock
 
   import scala.language.implicitConversions
   implicit def view2ViewS[T: Manifest](v: ArrayView2D[T]): Factory#ViewS[T] =
