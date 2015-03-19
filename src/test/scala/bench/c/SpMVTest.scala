@@ -35,9 +35,10 @@ class SpMVTest extends FunSuite {
 
   test("multByVectorC - diag") {
     val d456 = ArrayView2D.diag(Array(4, 5, 6))
-    print(d456.multByVectorC.body) // TODO: something is wrong in CDriver?
+    // print(d456.multByVectorC.body) // TODO: something is wrong in CDriver?
     // scala.virtualization.lms.internal.GenerationFailedException: CLikeGen:
     //   remap(m) : Type Array[Int] cannot be remapped.
     // print(d456.foreachEntryPrintC.body) // same problem here
+    print(d456.foreachValuePrintC.body) // same problem with func of 1 arg
   }
 }

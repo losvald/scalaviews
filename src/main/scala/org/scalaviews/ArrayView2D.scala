@@ -37,7 +37,6 @@ trait ArrayView2D[@specialized(Int, Double) T]
   type DimEntry = (Int, T)
   type Entry = (Int, Int, T)
   def append(dim: Int, other: ArrayView2D[T]): ArrayView2D[T]
-  def foreach(dim: Int, lateralInd: Int, f: DimEntry => Unit): Unit
   def indexes(dim: Int): Array[Int]
   def values(dim: Int): Array[T]
   def dimEntries(dim: Int): Array[DimEntry]
@@ -98,15 +97,19 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
 
   private[scalaviews] trait ViewS[T] extends ArrayView2D[T]
       with ArrayView2DLike[T, ViewS[T]] {
+    def printValues() = foreachValuePrintC()
+    lazy val foreachValuePrintC = compile { u: Rep[Unit] =>
+      foreachValueS { (v: Rep[T]) =>
+        print("\nval=" + v)
+      }
+    }
+    def foreachValueS(
+      f: Rep[T] => Rep[Unit]
+    ): Rep[Unit] = ???
+
     override final def append(dim: Int, that: ArrayView2D[T]) = that match {
       case that: ViewS[T] => this.append0(dim, that)
       case _ => ??? // TODO: that.prepend0(this)
-    }
-    override final def foreach(
-      dim: Int, lateralInd: Int, f: DimEntry => Unit
-    ): Unit = {
-      val arg = (lateralInd, f)
-      if (dim == 0) foreachC0(arg) else foreachC1(arg)
     }
     override def indexes(dim: Int): Array[Int] =
       if (dim == 0) indexesC0() else indexesC1()
@@ -169,11 +172,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       de._2 * values(de._1)
     }
 
-    private[scalaviews] final lazy val foreachC0 = compile(foreachS(0))
-    private[scalaviews] final lazy val foreachC1 = compile(foreachS(1))
-    private[scalaviews] def foreachS(dim: Int)(
-      arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit]
-
     private[scalaviews] def foreach2S(dim: Int)(
       f: Rep[DimEntry] => Rep[Unit]
     ): Rep[Unit] = {
@@ -227,8 +225,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     final override val sizes = (0, 0)
     final override val valueCount = 0
     // staged methods will not be called, so they can return anything
-    final override private[scalaviews] def foreachS(dim: Int)(
-      arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = {}
     final override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]): Rep[Unit] = {}
     final override private[scalaviews] val t = manifest[Any]
@@ -256,8 +252,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] lazy val values0 = valueMap.values.toArray
     override private[scalaviews] def valuesS(dim: Int) = staticData(values(dim))
 
-    override private[scalaviews] def foreachS(dim: Int)(
-      arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = ??? // TODO: implement
     override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]
     ): Rep[Unit] = {
@@ -280,13 +274,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       extends ViewS[T] {
     override val sizes = (a.length, a.length)
     override val valueCount = a.length
-    override private[scalaviews] def foreachS(dim: Int)(
-      arg: Rep[(Int, DimEntry => Unit)]
-    ): Rep[Unit] = {
-      // val (lateralInd, f) = arg // FIXME: type inference doesn't work here
-      val lateralInd = arg._1; val f = arg._2
-      f((lateralInd, staticData(a).apply(lateralInd)))
-    }
     override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]
     ): Rep[Unit] = {
@@ -297,7 +284,22 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       }
     }
     override private[scalaviews] val t = manifest[T]
+    var tmp: T = _
+    override def foreachValueS(
+      f: Rep[T] => Rep[Unit]
+    ): Rep[Unit] = {
+      val aS = staticData(a) // OK
+      // f(aS(0))            // error
+      // f(staticData(a).apply(0)) // error
+      // staticData(a).apply(0); unit() // OK
+      // f(staticData(tmp)) // OK
+      // f(staticData(gA.asInstanceOf[Array[T]]).apply(0)) // error
+      for (ind <- Range(0, a.length))
+        f(aS(ind)) // error
+    }
   }
+
+  val gA: Array[Int] = scala.Array(1, 2, 3)
 
   private[scalaviews] case class BlockDiag[T: Manifest](
     blocks: Array[Array[Array[T]]]
@@ -311,8 +313,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       (blockSizes._1 * blocks.size, blockSizes._2 * blocks.size)
     }
     override val valueCount = blocks.size * blockSizes._1 * blockSizes._2
-    override private[scalaviews] def foreachS(dim: Int)(
-      arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = ??? // TODO: implement
     override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]
     ): Rep[Unit] = {
@@ -335,9 +335,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override val sizes: Sizes
   ) extends ViewS[T] {
     override val valueCount = 0
-    override private[scalaviews] def foreachS(dim: Int)(
-      arg: Rep[(Int, DimEntry => Unit)]
-    ): Rep[Unit] = {}
     override private[scalaviews] def foreachEntryS(
       f: Rep[Entry] => Rep[Unit]
     ): Rep[Unit] = {}
@@ -362,23 +359,6 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       new Tuple2(sizes(0), sizes(1))
     }
     override val valueCount = (0 /: subviews)(_ + _.valueCount)
-    override private[scalaviews] def foreachS(dim: Int)(
-      arg: Rep[(Int, DimEntry => Unit)]
-    ): Rep[Unit] = {
-      if (dim == chainDim) {
-        for (v <- subviews)
-          v.foreachS(dim)(arg)
-      } else {
-        val lateralInd = arg._1; val f = arg._2
-        val res = binSearchS(0, subviews.size, lateralInd)
-        val viewInd = res._1; val localInd = res._2
-        val v = subviews(viewInd)
-        // TODO: stuck; view is not staged but its selection depends on dynamic
-        // behavior (index found by the binary search)
-        // v.foreachS(dim)((localInd, f))
-        unit()
-      }
-    }
     override private[scalaviews] def foreach2S(dim: Int)(
       f: Rep[DimEntry] => Rep[Unit]
     ): Rep[Unit] = {
