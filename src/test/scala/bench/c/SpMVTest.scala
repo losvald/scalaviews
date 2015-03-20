@@ -39,6 +39,7 @@ class SpMVTest extends FunSuite {
     // scala.virtualization.lms.internal.GenerationFailedException: CLikeGen:
     //   remap(m) : Type Array[Int] cannot be remapped.
     // print(d456.foreachEntryPrintC.body) // same problem here
-    print(d456.foreachValuePrintC.body) // same problem with func of 1 arg
+    // print(d456.foreachValuePrintC.body) // same problem with func of 1 arg
+    print(ArrayView2D.snippetC.body) // same problem w/ Shonan ex. from tutorial
   }
 }
