@@ -34,8 +34,26 @@ package object bench {
   }
 
   private[bench] trait CDriver { self: ViewExp =>
-    trait Codegen extends CCodeGenPkg
-        with CGenStaticData {
+    trait Codegen extends AnyRef
+    // copy-pasted from LMS tutorial (sorted)
+        with CGenArrayOps
+        with CGenBooleanOps
+        with CGenEqual
+        with CGenFunctions
+        with CGenIfThenElse
+        with CGenMiscOps
+        with CGenNumericOps
+        with CGenObjectOps
+        with CGenOrderingOps
+        with CGenPrimitiveOps
+        with CGenRangeOps
+        with CGenSeqOps
+        with CGenStaticData
+        with CGenStringOps
+     // with CGenUtilOps // this trait is specific to the tutorial example)
+        with CGenVariables
+        with CGenWhile
+    {
       val IR: self.type = self
     }
     val codegen = new Codegen {}
