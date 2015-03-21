@@ -37,6 +37,13 @@ package object bench {
     trait Codegen extends CCodeGenPkg
         with CGenStaticData {
       val IR: self.type = self
+
+      // XXX: workaround for probable remap bug with Array[Int] / Array[Double]
+      override def remap[A](m: Manifest[A]): String = m.toString match {
+        case "Array[Int]" => "int*"
+        case "Array[Double]" => "double*"
+        case _ => super.remap(m)
+      }
     }
     val codegen = new Codegen {}
   }
