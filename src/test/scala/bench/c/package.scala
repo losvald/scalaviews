@@ -45,6 +45,9 @@ package object bench {
         case _ => super.remap(m)
       }
 
+      // XXX: dirty hack to avoid a bug when generating static array
+      override def addRef(): String = " "
+
       // XXX: the rest is copied from dslapi.scala in LMS tutorial
 
       def getMemoryAllocString(count: String, memType: String): String = {
