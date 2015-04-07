@@ -128,10 +128,18 @@ package object bench {
     override def apply(a: A) = null.asInstanceOf[B]
   }
 
+  abstract class Function2Mock[A1, A2, B] extends ((A1, A2) => B) {
+    val body: String
+    override def apply(a1: A1, a2: A2) = null.asInstanceOf[B]
+  }
+
   import scala.language.implicitConversions
 
   implicit def mockFunction1[A, B](f: A => B) =
     f.asInstanceOf[Function1Mock[A, B]]
+
+  implicit def mockFunction2[A1, A2, B](f: (A1, A2) => B) =
+    f.asInstanceOf[Function2Mock[A1, A2, B]]
 
   // XXX: make org/scalaviews/CompileMock.scala more generic and reuse it here
   private[bench] trait CCompileMock { this: CDriver with ViewExp with Compile =>
@@ -141,6 +149,15 @@ package object bench {
       lazy val body: String = {
         val source = new java.io.StringWriter
         codegen.emitSource(f, "snippet", new java.io.PrintWriter(source))
+        source.toString
+      }
+    }
+    override def compile2[A1, A2, B](f: (Exp[A1], Exp[A2]) => Exp[B])(
+      implicit mA: Manifest[A1], mA2: Manifest[A2], mB: Manifest[B]
+    ) = new Function2Mock[A1, A2, B] {
+      lazy val body: String = {
+        val source = new java.io.StringWriter
+        codegen.emitSource2(f, "snippet", new java.io.PrintWriter(source))
         source.toString
       }
     }
