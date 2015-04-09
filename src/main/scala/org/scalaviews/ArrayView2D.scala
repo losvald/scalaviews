@@ -23,6 +23,7 @@ package org.scalaviews
 
 import scala.virtualization.lms.common._
 
+import scala.annotation.tailrec
 import scala.collection.SortedMap
 
 private[scalaviews] trait ArrayView2DLike[T, +This <: ArrayView2D[T]] {
@@ -37,6 +38,7 @@ trait ArrayView2D[@specialized(Int, Double) T]
   type DimEntry = (Int, T)
   type Entry = (Int, Int, T)
   def append(dim: Int, other: ArrayView2D[T]): ArrayView2D[T]
+  def update(row: Int, col: Int, value: T): Unit
   def apply(row: Int, col: Int): T
   def foreach(dim: Int, lateralInd: Int, f: DimEntry => Unit): Unit
   def indexes(dim: Int): Array[Int]
@@ -235,6 +237,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   private case object Empty extends ViewS[Any] {
     final override val sizes = (0, 0)
     final override val valueCount = 0
+    final override def update(row: Int, col: Int, value: Any): Unit = {}
     // staged methods will not be called, so they can return anything
     final override private[scalaviews] def applyS(
       row: Rep[Int], col: Rep[Int]) = 0
@@ -259,6 +262,18 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override def indexes(dim: Int) =
       if (dim == this.dim) indexesNonLateral else indexesLateral
     override def values(dim: Int) = values0
+    override def update(row: Int, col: Int, value: T): Unit = {
+      // require((dim == 0 && row == 0) || (dim != 0 && col == 0))
+      // val key = (if (dim == 0) col else row)
+      val key = (if (dim == 0) {
+        require(row == 0, "row-vector -> row == 0")
+        col
+      } else {
+        require(col == 0, "col-vector -> col == 0")
+        row
+      })
+      // valueMap = valueMap + (key -> defaultValue)) // FIXME:
+    }
     private[scalaviews] lazy val indexesNonLateral =
       valueMap.keys.toArray
     private[scalaviews] lazy val indexesLateral =
@@ -297,6 +312,10 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   ) extends ViewS[T] {
     override val sizes = (a.length, a.length)
     override val valueCount = a.length
+    override def update(row: Int, col: Int, value: T): Unit = {
+      require(row == col, "update must be on the diagonal")
+      a(row) = value
+    }
     override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) =
       if (row == col) staticData(a).apply(row)
       else staticData(defaultValue)
@@ -332,6 +351,14 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       (blockSizes._1 * blocks.size, blockSizes._2 * blocks.size)
     }
     override val valueCount = blocks.size * blockSizes._1 * blockSizes._2
+    override def update(row: Int, col: Int, value: T): Unit = {
+      val blockRow = row / blockSizes._1
+      val blockCol = col / blockSizes._2
+      require(blockRow == blockCol, "update must be on the diagonal")
+      blocks.apply(blockRow).apply(
+        row - blockRow * blockSizes._1).update(
+        col - blockCol * blockSizes._2, value)
+    }
     override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) = {
       val blockRow = row / blockSizes._1
       val blockCol = col / blockSizes._2
@@ -366,6 +393,9 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override val sizes: Sizes
   ) extends ViewS[T] {
     override val valueCount = 0
+    override def update(row: Int, col: Int, value: T): Unit = {
+      require(false, "cannot update - view would no longer be implicit")
+    }
     override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) = {
       staticData(f).apply(row, col)
     }
@@ -396,6 +426,16 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       new Tuple2(sizes(0), sizes(1))
     }
     override val valueCount = (0 /: subviews)(_ + _.valueCount)
+    override def update(row: Int, col: Int, value: T): Unit = {
+      val (subviewInd, localRow, localCol) = (if (chainDim == 0) {
+        val (index, localInd) = binSearch(row)
+        (index, localInd, col)
+      } else {
+        val (index, localInd) = binSearch(col)
+        (index, row, localInd)
+      })
+      subviews(subviewInd).update(localRow, localCol, value)
+    }
     override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) = {
       staticData(new scala.Array(1).apply(0)) // TODO: implement
     }
@@ -407,7 +447,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
           v.foreachS(dim)(arg)
       } else {
         val lateralInd = arg._1; val f = arg._2
-        val res = binSearchS(0, subviews.size, lateralInd)
+        val res = binSearchS(lateralInd)
         val viewInd = res._1; val localInd = res._2
         val v = subviews(viewInd)
         // TODO: stuck; view is not staged but its selection depends on dynamic
@@ -448,23 +488,35 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
         new Chain(chainDim2, subviews2 :+ that)
       case _ => super.append0(dim, that)
     }
-    private def binSearchS(lo: Int, hi: Int,
-      lateralInd: Rep[Int]//, f: Rep[DimEntry => Unit]
-    ): Rep[Tuple2[Int, Int]] = {
-      // find lowest index s.t. lateralCumSizes(index) > lateralInd
-      if (lo >= hi)
-        (hi: Rep[Int], lateralInd - (if (hi > 0) lateralCumSizes(hi) else 0))
-      else {
+    @tailrec private def binSearchS(
+      lateralInd: Rep[Int], // f: Rep[DimEntry => Unit],
+      lo: Int = 0, hi: Int = nonLateralCumSizes.size
+    ): Rep[(Int, Int)] = (lo >= hi) match {
+      case true => (
+        hi - 1: Rep[Int],
+        lateralInd - (if (hi > 0) nonLateralCumSizes(hi - 1) else 0))
+      case false =>
         val mid = (lo + hi - 1) >>> 1
-        if (lateralCumSizes(mid) > lateralInd)
-          binSearchS(lo, mid, lateralInd)
-        else
-          binSearchS(mid + 1, hi, lateralInd)
-      }
+        (nonLateralCumSizes(mid) > lateralInd) match {
+          case true => binSearchS(lateralInd, lo, mid)
+          case false => binSearchS(lateralInd, mid + 1, hi)
+        }
     }
-    private val lateralCumSizes: IndexedSeq[Int] = {
-      val lateralDim = 1 - chainDim
-      subviews.map(_.sizes.productElement(lateralDim)).scanLeft(0) {
+    @tailrec private def binSearch(lateralInd: Int,
+      lo: Int = 0, hi: Int = nonLateralCumSizes.size
+    ): (Int, Int) = (lo >= hi) match {
+      // find lowest subview index s.t. nonLateralCumSizes(index) > lateralInd
+      // and the corresponding local index
+      case true =>
+        (hi - 1, lateralInd - (if (hi > 0) nonLateralCumSizes(hi - 1) else 0))
+      case false =>
+        val mid = (lo + hi - 1) >>> 1
+        val (loNext, hiNext) = (if (nonLateralCumSizes(mid) > lateralInd)
+          (lo, mid) else (mid + 1, hi))
+        binSearch(lateralInd, loNext, hiNext)
+    }
+    private val nonLateralCumSizes: IndexedSeq[Int] = {
+      subviews.map(_.sizes.productElement(chainDim)).scanLeft(0) {
         _ + _.asInstanceOf[Int]
       }
     }

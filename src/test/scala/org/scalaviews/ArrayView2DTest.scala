@@ -33,7 +33,7 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
   type Chain[T] = ArrayView2DFactory#Chain[T]
   type Diag[T] = ArrayView2DFactory#Diag[T]
 
-  test("apply - diag") {
+  test("apply & update - diag") {
     val d = Factory.diag(Array(10, 20, 30))
     d(0, 0) must be (10)
     d(1, 1) must be (20)
@@ -41,9 +41,18 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
     d(0, 2) must be (0)
     d(2, 1) must be (0)
     d(2, 2) must be (30)
+
+    d(1, 1) = 200
+    d(0, 0) = 1000
+    d(1, 1) must be (200)
+    d(0, 0) must be (1000)
+
+    // verify update outside the diagonal raises the appropriate exception
+    an [IllegalArgumentException] must be thrownBy { d(1, 0) = 400 }
+    an [IllegalArgumentException] must be thrownBy { d(0, 23) = 0 }
   }
 
-  test("apply - block diag") {
+  test("apply & update - block diag") {
     val A = Array
     val bd2by1 = Factory.blockDiag(A(
       A(A(0, 10)),
@@ -54,17 +63,38 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
     bd2by1(1, 3) must be (3000)
     bd2by1(2, 4) must be (4)
     bd2by1(2, 5) must be (50)
+
+    bd2by1(0, 1) = 100
+    bd2by1(1, 2) = 20
+    bd2by1(0, 1) must be (100)
+    bd2by1(1, 2) must be (20)
+
+    // verify update outside the diagonal raises the appropriate exception
+    an [IllegalArgumentException] must be thrownBy { bd2by1(0, 2) = 400 }
+    an [IllegalArgumentException] must be thrownBy { bd2by1(1, 1) = 0 }
+    an [IllegalArgumentException] must be thrownBy { bd2by1(-100, 3000) = 0 }
   }
 
-  ignore("apply - chain of diags") {
-    val d456 = Factory.diag(Array(4, 5, 6))
-    val d789 = Factory.diag(Array(7, 8, 9))
+  test("apply & update - chain of diags") {
+    val a1 = Array(4, 5, 6)
+    val a2 = Array(7, 8, 9)
+    val d456 = Factory.diag(a1)
+    val d789 = Factory.diag(a2)
     val cd = d456.along(0) :+ d789
-    cd(0, 0) must be (4)
-    cd(2, 2) must be (6)
-    cd(3, 0) must be (7)
-    cd(4, 1) must be (8)
-    cd(5, 2) must be (9)
+
+    // TODO: uncomment after implementing apply
+    // cd(0, 0) must be (4)
+    // cd(2, 2) must be (6)
+    // cd(3, 0) must be (7)
+    // cd(4, 1) must be (8)
+    // cd(5, 2) must be (9)
+
+    cd.update(2, 2, 60)
+    cd.update(3, 0, 700)
+    cd.update(4, 1, -8)
+    a1(2) must be (60)
+    a2(0) must be (700)
+    a2(1) must be (-8)
   }
 
   // TODO: add tests for apply for other case classes

@@ -23,9 +23,9 @@ package org.scalaviews.bench
 
 import org.scalaviews.ArrayView2D
 
-import org.scalatest.FunSuite
+import org.scalatest.{FunSuite,MustMatchers}
 
-class SpMVTest extends FunSuite {
+class SpMVTest extends FunSuite with MustMatchers {
   val ArrayView2D = CArrayView2D.Factory
   type ArrayView2DS[T] = org.scalaviews.ArrayView2DFactory#ViewS[T]
 
@@ -33,11 +33,47 @@ class SpMVTest extends FunSuite {
   implicit def view2ViewS[T: Manifest](v: ArrayView2D[T]): ArrayView2DS[T] =
     v.asInstanceOf[ArrayView2DS[T]]
 
-  test("multByVectorC - diag") {
-    val d456 = ArrayView2D.diag(Array(4, 5, 6))
-    print(d456.multByVectorC.body) // TODO: something is wrong in CDriver?
-    // scala.virtualization.lms.internal.GenerationFailedException: CLikeGen:
-    //   remap(m) : Type Array[Int] cannot be remapped.
-    // print(d456.foreachEntryPrintC.body) // same problem here
+  def mkIntArrayRegex(values: Int*) =
+    """int ?\*.* = \(int32_t\[\]\)\{""" + values.mkString(",") + """\};"""
+
+  test("multByVectorC - static diag") {
+    val a = Array(4, 5, 6)
+    val body = ArrayView2D.diag(a).multByVectorC.body
+    body must include regex mkIntArrayRegex(4, 5, 6)
+    body.count(_ == '+') must be (a.length)
+    // TODO: more assertions
+  }
+
+  test("multByVectorC - dynamic chain of diags") {
+    // a2    a3
+    //    a2    a3
+    //             a3
+    // a5
+    //    a5
+    //       ..
+    val a2 = new Array[Int](2)
+    val cd2e1 = ArrayView2D.diag(a2).along(0) :+ ArrayView2D.impl((1, 2), 0)
+    val a3 = new Array[Int](3)
+    val cd2e1d3 = cd2e1.along(1) :+ ArrayView2D.diag(a3)
+    val a5 = new Array[Int](5)
+    val m = cd2e1d3.along(0) :+ ArrayView2D.diag(a5)
+
+    // change the values on diagonals through the view before generating code
+    m(0, 0) = 90
+    m(1, 1) = 8
+    m(0, 2) = 70000
+    m(1, 3) = 600
+    m(2, 4) = 5000
+    m(3, 0) = 400000
+    m(4, 1) = 3000000
+    m(5, 2) = 20000000
+    m(7, 4) = 100000000
+
+    // verify the updates are correctly reflected in the generated code
+    val body = m.multByVectorC.body
+    body must include regex """(?s)""" + List(
+      mkIntArrayRegex(90, 8),
+      mkIntArrayRegex(70000, 600, 5000),
+      mkIntArrayRegex(400000,3000000,20000000,0,100000000)).mkString(".*")
   }
 }
