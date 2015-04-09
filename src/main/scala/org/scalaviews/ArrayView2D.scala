@@ -83,10 +83,20 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     values: Array[T],
     defaultValue: Option[T] = None
   ): ArrayView2D[T] = new Diag[T](values, mkDefaultValue(defaultValue))
+  def diag[T: Manifest](
+    size: Int,
+    defaultValue: Option[T]
+  ): ArrayView2D[T] = diag(scala.Array.ofDim[T](size), defaultValue)
   def blockDiag[T: Manifest](
     blocks: Array[Array[Array[T]]],
     defaultValue: Option[T] = None
   ): ArrayView2D[T] = new BlockDiag[T](blocks, mkDefaultValue(defaultValue))
+  def blockDiag[T: Manifest](
+    rowCount: Int, colCount: Int,
+    defaultValue: Option[T] = None
+  ): ArrayView2D[T] = blockDiag(
+    scala.Array(scala.Array.ofDim(rowCount, colCount)),
+    defaultValue)
   def chain[T: Manifest](
     chainDim: Int,
     subviews: ArrayView2D[T]*
@@ -95,6 +105,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     new Chain(chainDim,
       subviews.toIndexedSeq.asInstanceOf[IndexedSeq[ViewS[T]]])
   }
+  def dense[T: Manifest](rows: Array[Array[T]]): ArrayView2D[T] =
+    blockDiag[T](scala.Array(rows))
   def vector[T: Manifest](
     col: Boolean, length: Int, defaultValue: T, entries: (Int, T)*
   ): ArrayView2D[T] =
