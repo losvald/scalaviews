@@ -176,8 +176,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       de._2 * values(de._1)
     }
 
-    private[scalaviews] final lazy val applyC = compile(applyS)
-    private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T]
+    private[scalaviews] final lazy val applyC = compile2(applyS)
+    private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]): Rep[T]
     private[scalaviews] final lazy val foreachC0 = compile(foreachS(0))
     private[scalaviews] final lazy val foreachC1 = compile(foreachS(1))
     private[scalaviews] def foreachS(dim: Int)(
@@ -236,7 +236,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     final override val sizes = (0, 0)
     final override val valueCount = 0
     // staged methods will not be called, so they can return anything
-    final override private[scalaviews] def applyS(inds: Rep[(Int, Int)]) = 0
+    final override private[scalaviews] def applyS(
+      row: Rep[Int], col: Rep[Int]) = 0
     final override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]): Rep[Unit] = {}
     final override private[scalaviews] def foreachEntryS(
@@ -267,7 +268,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     private[scalaviews] lazy val values0 = valueMap.values.toArray
     override private[scalaviews] def valuesS(dim: Int) = staticData(values(dim))
 
-    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
+    override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) = {
       staticData(defaultValue) // TODO: implement
     }
     override private[scalaviews] def foreachS(dim: Int)(
@@ -296,8 +297,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
   ) extends ViewS[T] {
     override val sizes = (a.length, a.length)
     override val valueCount = a.length
-    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] =
-      if (inds._1 == inds._2) staticData(a).apply(inds._1)
+    override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) =
+      if (row == col) staticData(a).apply(row)
       else staticData(defaultValue)
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]
@@ -331,13 +332,13 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       (blockSizes._1 * blocks.size, blockSizes._2 * blocks.size)
     }
     override val valueCount = blocks.size * blockSizes._1 * blockSizes._2
-    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
-      val blockRow = inds._1 / blockSizes._1
-      val blockCol = inds._2 / blockSizes._2
+    override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) = {
+      val blockRow = row / blockSizes._1
+      val blockCol = col / blockSizes._2
       if (blockRow == blockCol) {
         staticData(blocks).apply(blockRow).apply(
-          inds._1 - blockRow * blockSizes._1).apply(
-          inds._2 - blockCol * blockSizes._2)
+          row - blockRow * blockSizes._1).apply(
+          col - blockCol * blockSizes._2)
       } else
         staticData(defaultValue)
     }
@@ -365,8 +366,8 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
     override val sizes: Sizes
   ) extends ViewS[T] {
     override val valueCount = 0
-    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
-      staticData(f).apply(inds)
+    override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) = {
+      staticData(f).apply(row, col)
     }
     override private[scalaviews] def foreachS(dim: Int)(
       arg: Rep[(Int, DimEntry => Unit)]
@@ -395,7 +396,7 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
       new Tuple2(sizes(0), sizes(1))
     }
     override val valueCount = (0 /: subviews)(_ + _.valueCount)
-    override private[scalaviews] def applyS(inds: Rep[(Int, Int)]): Rep[T] = {
+    override private[scalaviews] def applyS(row: Rep[Int], col: Rep[Int]) = {
       staticData(new scala.Array(1).apply(0)) // TODO: implement
     }
     override private[scalaviews] def foreachS(dim: Int)(

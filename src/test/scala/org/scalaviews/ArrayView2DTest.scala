@@ -43,6 +43,30 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
     d(2, 2) must be (30)
   }
 
+  test("apply - block diag") {
+    val A = Array
+    val bd2by1 = Factory.blockDiag(A(
+      A(A(0, 10)),
+      A(A(200, 3000)),
+      A(A(4, 50))))
+    bd2by1(0, 0) must be (0)
+    bd2by1(1, 2) must be (200)
+    bd2by1(1, 3) must be (3000)
+    bd2by1(2, 4) must be (4)
+    bd2by1(2, 5) must be (50)
+  }
+
+  ignore("apply - chain of diags") {
+    val d456 = Factory.diag(Array(4, 5, 6))
+    val d789 = Factory.diag(Array(7, 8, 9))
+    val cd = d456.along(0) :+ d789
+    cd(0, 0) must be (4)
+    cd(2, 2) must be (6)
+    cd(3, 0) must be (7)
+    cd(4, 1) must be (8)
+    cd(5, 2) must be (9)
+  }
+
   // TODO: add tests for apply for other case classes
 
   test("foreach2 - chain of diags") {
