@@ -132,6 +132,10 @@ package object bench {
     override def apply(a1: A1, a2: A2) = null.asInstanceOf[B]
   }
 
+  // tags
+  import org.scalatest.Tag
+  object CppViewsTest extends Tag("org.scalaviews.tags.CppViewsTest")
+
   import scala.language.implicitConversions
 
   implicit def mockFunction1[A, B](f: A => B) =
