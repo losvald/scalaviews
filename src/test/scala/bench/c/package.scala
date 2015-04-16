@@ -48,11 +48,10 @@ package object bench {
       // XXX: dirty hack to avoid a bug when generating static array
       override def addRef(): String = " "
 
-      // XXX: the rest is copied from dslapi.scala in LMS tutorial
+      def getMemoryAllocString(count: String, memType: String): String =
+        s"new $memType[$count]()"
 
-      def getMemoryAllocString(count: String, memType: String): String = {
-        "(" + memType + "*)malloc(" + count + " * sizeof(" + memType + "));"
-      }
+      // XXX: the rest is copied from dslapi.scala in LMS tutorial
       override def format(s: Exp[Any]): String = {
         remap(s.tp) match {
           case "uint16_t" => "%c"
@@ -96,7 +95,7 @@ package object bench {
         case a@ArrayNew(n) =>
           val arrType = remap(a.m)
           stream.println(arrType + "* " + quote(sym) + " = " +
-            getMemoryAllocString(quote(n), arrType))
+            getMemoryAllocString(quote(n), arrType) + ";")
         case ArrayApply(x,n) => emitValDef(sym, quote(x) + "[" + quote(n) + "]")
         case ArrayUpdate(x,n,y) =>
           stream.println(quote(x) + "[" + quote(n) + "] = " + quote(y) + ";")
