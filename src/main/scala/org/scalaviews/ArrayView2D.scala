@@ -74,8 +74,11 @@ trait ArrayView2DFactory extends ViewFactory with ScalaOpsPkg
 
   def impl[T: Manifest](sizes: Sizes, f: Sizes => T): ArrayView2D[T] =
     new Implicit(f, sizes)
-  def impl[T: Manifest](sizes: Sizes, value: T): ArrayView2D[T] = {
-    val const = scala.Array(value).apply(0)
+  def impl[T: Manifest](
+    sizes: Sizes,
+    defaultValue: Option[T] = None
+  ): ArrayView2D[T] = {
+    val const = scala.Array(mkDefaultValue(defaultValue)).apply(0)
     impl(sizes, inds => const)
   }
   def empty[T: Manifest] = Empty.asInstanceOf[ViewS[T]]

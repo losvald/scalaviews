@@ -52,7 +52,7 @@ class SpMVTest extends FunSuite with MustMatchers {
     //    a5
     //       ..
     val a2 = new Array[Int](2)
-    val cd2e1 = ArrayView2D.diag(a2).along(0) :+ ArrayView2D.impl((1, 2), 0)
+    val cd2e1 = ArrayView2D.diag(a2).along(0) :+ ArrayView2D.impl((1, 2))
     val a3 = new Array[Int](3)
     val cd2e1d3 = cd2e1.along(1) :+ ArrayView2D.diag(a3)
     val a5 = new Array[Int](5)

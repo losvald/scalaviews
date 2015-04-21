@@ -62,7 +62,7 @@ val .* \1\(""" + e._2 + """\) = """ + e._1
     val A = Array
     val d2x4Block = A(A(-1, -1, -1, -1), A(1, 1, 1, 1))
     val bd2x4 = Factory.blockDiag(A.fill(3)(d2x4Block))
-    val e1 = Factory.impl((3, 1), 0)
+    val e1 = Factory.impl[Int]((3, 1))
     val cd3x3e1 = Factory.chain(1,
       Factory.diag(A.fill(3)(-1634)), e1,
       Factory.diag(A.fill(3)(-2211)), e1,

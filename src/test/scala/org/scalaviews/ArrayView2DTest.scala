@@ -195,7 +195,7 @@ class ArrayView2DTest extends FunSuite with MustMatchers {
     val d2x4Block = A(A(-1, -1, -1, -1), A(1, 1, 1, 1))
     val bd2x4 = Factory.blockDiag(A.fill(10)(d2x4Block))
     bd2x4.sizes must be ((20, 40))
-    val e1 = Factory.impl((3, 1), 0)
+    val e1 = Factory.impl[Int]((3, 1))
     val cd3x3e1 = Factory.chain(1,
       Factory.diag(A.fill(3)(-1669)), e1,
       Factory.diag(A.fill(3)(-2191)), e1,
